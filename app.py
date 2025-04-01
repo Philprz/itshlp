@@ -7,11 +7,11 @@ Ce programme expose une API REST pour interroger les collections Qdrant
 """
 
 import os
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from main_fixed import QdrantSystem
+from main import QdrantSystem
 
 # Création de l'application FastAPI
 app = FastAPI(

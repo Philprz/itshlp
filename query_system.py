@@ -7,11 +7,9 @@ Ce système permet d'interroger les collections Qdrant selon les priorités déf
 et de formater les réponses selon les formats demandés.
 """
 
-import os
-import json
 import csv
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any
 
 # Définition des collections
 COLLECTIONS = ["JIRA", "CONFLUENCE", "ZENDESK", "NETSUITE", "NETSUITE_DUMMIES", "SAP"]
@@ -147,7 +145,7 @@ class QdrantSystem:
             date = datetime.strptime(date_str, "%Y-%m-%d")
             six_months_ago = datetime.now() - timedelta(days=180)
             return date >= six_months_ago
-        except:
+        except (ValueError, TypeError):
             return False
     
     def format_response(self, content: Dict[str, Any], format_type: str = "Summary") -> str:
