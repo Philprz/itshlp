@@ -44,7 +44,7 @@ J'ai créé une version Python de votre fichier render.yaml :
 
 services:
   - type: web
-    name: qdrant-web-api
+    name: itshlp
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: python app.py

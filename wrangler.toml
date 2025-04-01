@@ -1,5 +1,5 @@
 # Fichier de configuration pour le déploiement Cloudflare
-name = "qdrant-web"
+name = "itshlp"
 main = ".next/server/index.js"
 compatibility_date = "2023-12-01"
 
