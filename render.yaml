@@ -1,0 +1,30 @@
+# Fichier de configuration pour le déploiement sur Render
+# Version Python pour l'application Qdrant Web
+
+services:
+  - type: web
+    name: qdrant-web-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: QDRANT_URL
+        value: https://b361537d-20a3-4a84-b96f-9efb19837c15.us-east4-0.gcp.cloud.qdrant.io
+      - key: QDRANT_COLLECTION_ZENDESK
+        value: ZENDESK
+      - key: QDRANT_COLLECTION_JIRA
+        value: JIRA
+      - key: QDRANT_COLLECTION_CONFLUENCE
+        value: CONFLUENCE
+      - key: QDRANT_COLLECTION_NETSUITE
+        value: NETSUITE
+      - key: QDRANT_COLLECTION_NETSUITE_DUMMIES
+        value: NETSUITE_DUMMIES
+      - key: QDRANT_COLLECTION_SAP
+        value: SAP
+      - key: QDRANT_API_KEY
+        sync: false
+    healthCheckPath: /
+    autoDeploy: true

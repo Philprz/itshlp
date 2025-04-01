@@ -1,0 +1,23 @@
+# Fichier de configuration pour le déploiement Cloudflare
+name = "qdrant-web"
+main = ".next/server/index.js"
+compatibility_date = "2023-12-01"
+
+# Configuration des variables d'environnement
+[vars]
+QDRANT_URL = "https://b361537d-20a3-4a84-b96f-9efb19837c15.us-east4-0.gcp.cloud.qdrant.io"
+QDRANT_COLLECTION_ZENDESK = "ZENDESK"
+QDRANT_COLLECTION_JIRA = "JIRA"
+QDRANT_COLLECTION_CONFLUENCE = "CONFLUENCE"
+QDRANT_COLLECTION_NETSUITE = "NETSUITE"
+QDRANT_COLLECTION_NETSUITE_DUMMIES = "NETSUITE_DUMMIES"
+QDRANT_COLLECTION_SAP = "SAP"
+
+# Configuration des secrets (à définir via la commande wrangler)
+# wrangler secret put QDRANT_API_KEY
+
+# Configuration de la base de données D1 (optionnelle pour les futures fonctionnalités)
+[[d1_databases]]
+binding = "DB"
+database_name = "qdrant_web_db"
+database_id = "local"

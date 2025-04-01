@@ -1,0 +1,8 @@
+NETSUITE
+
+title
+summary
+content
+content_hash
+last_updated
+url

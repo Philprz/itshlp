@@ -1,0 +1,5 @@
+NETSUITE_DUMMIES
+id
+title
+text
+pdf_path
