@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from main import QdrantSystem
+from main_fixed import QdrantSystem
 
 # Création de l'application FastAPI
 app = FastAPI(
@@ -96,4 +96,4 @@ if __name__ == "__main__":
     # Démarrage du serveur avec Uvicorn
     # host="0.0.0.0" permet d'accéder au serveur depuis l'extérieur
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("app_fixed:app", host="0.0.0.0", port=port, reload=False)
