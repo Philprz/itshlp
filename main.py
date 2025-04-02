@@ -9,9 +9,8 @@ sur les clients IT SPIRIT et les systèmes ERP (SAP et NetSuite).
 
 import os
 import csv
-import json
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Filter, FieldCondition, MatchValue, Range
@@ -427,5 +426,118 @@ class QdrantSystem:
         if "assignee" in content:
             metadata.append(f"Assigné à: {content['assignee']}")
         
-        if metadata
-(Content truncated due to size limit. Use line ranges to read in chunks)
+        if metadata:
+            detail += "---\n" + "\n".join(metadata)
+        
+        return detail
+    
+    def _format_guide(self, content: Dict[str, Any]) -> str:
+        """
+        Formate la réponse en instructions étape par étape
+        
+        Args:
+            content: Contenu de la réponse
+            
+        Returns:
+            Instructions étape par étape
+        """
+        # Implémentation du formatage en guide
+        guide = ""
+        
+        # Titre
+        if "title" in content:
+            guide += f"# Guide: {content['title']}\n\n"
+        elif "summary" in content:
+            guide += f"# Guide: {content['summary']}\n\n"
+        
+        # Introduction
+        if "description" in content:
+            guide += f"## Introduction\n{content['description']}\n\n"
+        
+        # Contenu principal - on essaie de le structurer en étapes
+        if "content" in content:
+            # On tente de diviser le contenu en étapes
+            steps = self._extract_steps(content["content"])
+            if steps:
+                guide += "## Étapes à suivre\n\n"
+                for i, step in enumerate(steps, 1):
+                    guide += f"{i}. {step}\n"
+            else:
+                guide += f"## Procédure\n{content['content']}\n\n"
+        elif "text" in content:
+            steps = self._extract_steps(content["text"])
+            if steps:
+                guide += "## Étapes à suivre\n\n"
+                for i, step in enumerate(steps, 1):
+                    guide += f"{i}. {step}\n"
+            else:
+                guide += f"## Procédure\n{content['text']}\n\n"
+        
+        # Notes ou conseils
+        if "comments" in content and content["comments"]:
+            guide += f"\n## Notes et conseils\n{content['comments']}\n"
+        
+        return guide
+    
+    def _extract_steps(self, text: str) -> List[str]:
+        """
+        Extrait les étapes d'un texte
+        
+        Args:
+            text: Texte à analyser
+            
+        Returns:
+            Liste des étapes extraites
+        """
+        # Recherche de patterns comme "1.", "Step 1:", "Étape 1:", etc.
+        steps = []
+        lines = text.split("\n")
+        
+        # Patterns possibles pour les étapes
+        step_patterns = [
+            r"^\d+\.",  # "1."
+            r"^Step \d+:",  # "Step 1:"
+            r"^Étape \d+:",  # "Étape 1:"
+            r"^Étape \d+\.",  # "Étape 1."
+        ]
+        
+        import re
+        current_step = ""
+        in_step = False
+        
+        for line in lines:
+            is_step_header = any(re.match(pattern, line) for pattern in step_patterns)
+            
+            if is_step_header:
+                if in_step and current_step:
+                    steps.append(current_step.strip())
+                current_step = line
+                in_step = True
+            elif in_step:
+                current_step += " " + line
+        
+        # Ajouter la dernière étape
+        if in_step and current_step:
+            steps.append(current_step.strip())
+        
+        # Si on n'a pas trouvé d'étapes avec les patterns, on essaie de diviser le texte
+        if not steps and len(lines) > 3:
+            # On divise le texte en paragraphes et on prend chaque paragraphe comme une étape
+            paragraphs = []
+            current_para = ""
+            
+            for line in lines:
+                if line.strip():
+                    current_para += line + " "
+                elif current_para:
+                    paragraphs.append(current_para.strip())
+                    current_para = ""
+            
+            if current_para:
+                paragraphs.append(current_para.strip())
+            
+            # Si on a entre 3 et 10 paragraphes, on les considère comme des étapes
+            if 3 <= len(paragraphs) <= 10:
+                return paragraphs
+        
+        return steps
