@@ -20,7 +20,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configuration CORS pour permettre les requêtes depuis le frontend Next.js
+# Configuration CORS pour permettre les requêtes cross-origin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # En production, spécifier l'origine exacte du frontend
@@ -33,17 +33,15 @@ app.add_middleware(
 clients_file = "ListeClients.csv"
 qdrant_system = QdrantSystem(clients_file)
 
-# Modèle de données pour la requête
-class QueryRequest(BaseModel):
+class SearchRequest(BaseModel):
     query: str
     client: Optional[str] = None
     erp: Optional[str] = None
-    format: str = "Summary"
-    recentOnly: bool = True
-    limit: int = 5
+    format: Optional[str] = "Summary"
+    recentOnly: Optional[bool] = False
+    limit: Optional[int] = 5
 
-# Modèle de données pour la réponse
-class QueryResponse(BaseModel):
+class SearchResponse(BaseModel):
     format: str
     content: List[str]
     sources: str
@@ -53,8 +51,8 @@ async def root():
     """Point de terminaison racine pour vérifier que l'API est en ligne"""
     return {"status": "online", "message": "API Qdrant d'IT SPIRIT opérationnelle"}
 
-@app.post("/api/search", response_model=QueryResponse)
-async def search(request: QueryRequest):
+@app.post("/api/search", response_model=SearchResponse)
+async def search(request: SearchRequest):
     """Point de terminaison pour effectuer une recherche dans les collections Qdrant"""
     try:
         # Vérification des paramètres requis
@@ -71,7 +69,7 @@ async def search(request: QueryRequest):
         
         # Traitement de la requête
         result = qdrant_system.process_query(
-            query_text=request.query,
+            query=request.query,
             client_name=request.client,
             erp=request.erp,
             recent_only=request.recentOnly,
@@ -79,21 +77,28 @@ async def search(request: QueryRequest):
             format_type=request.format
         )
         
-        # Extraction des résultats et des sources
-        content = result.get("content", [])
-        sources = result.get("sources", "")
+        # Extraction et formatage de la réponse
+        if isinstance(result, dict) and "content" in result and "sources" in result:
+            content = result.get("content", [])
+            sources = result.get("sources", "")
+            format_type = result.get("format", request.format)
+        else:
+            # Compatibilité avec la version 2 où result pourrait être directement renvoyé
+            content = result if isinstance(result, list) else [str(result)]
+            sources = ""
+            format_type = request.format
         
         return {
-            "format": request.format,
+            "format": format_type,
             "content": content,
             "sources": sources
         }
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
     # Démarrage du serveur avec Uvicorn
-    # host="0.0.0.0" permet d'accéder au serveur depuis l'extérieur
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)

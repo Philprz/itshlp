@@ -170,7 +170,51 @@ class QdrantSystem:
         
         # Si on n'a ni client ni ERP, on renvoie toutes les collections
         return ["JIRA", "CONFLUENCE", "ZENDESK", "SAP", "NETSUITE", "NETSUITE_DUMMIES"]
-    
+    def _get_prioritized_collections(self, client_name=None, erp=None, query=None):
+        """
+        Détermine les collections à interroger en priorité en fonction du client, de l'ERP et de la requête.
+        
+        Args:
+            client_name (str, optional): Nom du client. Defaults to None.
+            erp (str, optional): ERP spécifique (SAP ou NetSuite). Defaults to None.
+            query (str, optional): Requête utilisateur. Defaults to None.
+            
+        Returns:
+            list: Liste des collections à interroger, par ordre de priorité
+        """
+        # Analyser la requête pour détecter des mentions d'ERP
+        if query:
+            query_lower = query.lower()
+            mentions_sap = "sap" in query_lower
+            mentions_netsuite = "netsuite" in query_lower or "net suite" in query_lower
+            
+            # Si la requête mentionne explicitement un ERP, le prioriser
+            if mentions_sap:
+                return ["JIRA", "CONFLUENCE", "ZENDESK", "SAP"]
+            elif mentions_netsuite:
+                return ["JIRA", "CONFLUENCE", "ZENDESK", "NETSUITE", "NETSUITE_DUMMIES"]
+        
+        # Sinon, utiliser l'ERP sélectionné s'il y en a un
+        if erp == "SAP":
+            return ["JIRA", "CONFLUENCE", "ZENDESK", "SAP"]
+        elif erp == "NetSuite":
+            return ["NETSUITE", "NETSUITE_DUMMIES", "JIRA", "CONFLUENCE", "ZENDESK"]
+        
+        # Si on a un client mais pas d'ERP spécifié
+        if client_name:
+            # Vérifier si le client a un ERP spécifique dans les données client
+            client_erp = self.get_client_erp(client_name)
+            if client_erp == "SAP":
+                return ["JIRA", "CONFLUENCE", "ZENDESK", "SAP"]
+            elif client_erp == "NetSuite":
+                return ["JIRA", "CONFLUENCE", "ZENDESK", "NETSUITE", "NETSUITE_DUMMIES"]
+            else:
+                # Si on ne connaît pas l'ERP, chercher dans toutes les collections
+                return ["JIRA", "CONFLUENCE", "ZENDESK", "SAP", "NETSUITE", "NETSUITE_DUMMIES"]
+        
+        # Par défaut, chercher dans toutes les collections
+        return ["JIRA", "CONFLUENCE", "ZENDESK", "SAP", "NETSUITE", "NETSUITE_DUMMIES"]
+
     def is_recent_date(self, date_str: str) -> bool:
         """
         Vérifie si une date est récente (moins de 6 mois)
@@ -185,7 +229,7 @@ class QdrantSystem:
             date = datetime.strptime(date_str, "%Y-%m-%d")
             six_months_ago = datetime.now() - timedelta(days=180)
             return date >= six_months_ago
-        except:
+        except ValueError:
             return False
     
     def search_in_collection(self, collection_name: str, query: str, client_name: str = "", 
@@ -277,27 +321,26 @@ class QdrantSystem:
         
         return False
     
-    def process_query(self, query_text: str, client_name: str = "", erp: str = "", 
-                     recent_only: bool = True, limit: int = 5, format_type: str = "Summary") -> Dict[str, Any]:
+    def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary"):
         """
-        Traite une requête et renvoie les résultats formatés
+        Traite une requête utilisateur et renvoie les résultats formatés.
         
         Args:
-            query_text: Texte de la requête
-            client_name: Nom du client (optionnel)
-            erp: Système ERP (optionnel)
-            recent_only: Filtrer uniquement les résultats récents (moins de 6 mois)
-            limit: Nombre maximum de résultats à retourner
-            format_type: Format de la réponse (Summary, Detail, Guide)
+            query (str): La requête de l'utilisateur
+            client_name (str, optional): Nom du client. Defaults to None.
+            erp (str, optional): ERP spécifique (SAP ou NetSuite). Defaults to None.
+            recent_only (bool, optional): Limiter aux résultats récents. Defaults to False.
+            limit (int, optional): Nombre maximum de résultats. Defaults to 5.
+            format_type (str, optional): Type de formatage (Summary, Detail, Guide). Defaults to "Summary".
             
         Returns:
-            Résultats formatés de la requête
+            dict: Résultats formatés
         """
-        # Vérification des paramètres
-        if not query_text:
+        # Vérifier que la requête n'est pas vide
+        if not query:
             return {
-                "format": "Error",
-                "content": ["La requête ne peut pas être vide"],
+                "format": format_type,
+                "content": ["Veuillez entrer une requête de recherche"],
                 "sources": ""
             }
         
@@ -305,55 +348,89 @@ class QdrantSystem:
         if format_type not in self.formats:
             format_type = "Summary"
         
-        # Vérification si la requête est ambiguë
-        if self.is_query_ambiguous(query_text, client_name, erp):
-            return {
-                "format": "Clarification",
-                "content": ["Votre requête est ambiguë. Pourriez-vous préciser pour quel ERP (SAP ou NetSuite) vous souhaitez des informations ?"],
-                "sources": ""
-            }
-        
-        # Récupération des collections prioritaires
-        prioritized_collections = self.get_prioritized_collections(client_name, erp)
+        # Récupération des collections prioritaires en incluant la requête
+        collections = self._get_prioritized_collections(client_name, erp, query)
         
         # Recherche dans chaque collection
         all_results = []
         collections_used = []
         
-        for collection_name in prioritized_collections:
-            results = self.search_in_collection(
-                collection_name=collection_name,
-                query=query_text,
-                client_name=client_name,
-                recent_only=recent_only,
-                limit=limit
-            )
-            
-            if results:
-                all_results.extend(results)
-                collections_used.append(collection_name)
+        for collection_name in collections:
+            try:
+                results = self._search_in_collection(
+                    collection_name,
+                    query,
+                    client_name=client_name,
+                    recent_only=recent_only,
+                    limit=limit
+                )
                 
-                # Si on a suffisamment de résultats, on s'arrête
-                if len(all_results) >= limit:
-                    break
+                if results:
+                    all_results.extend(results)
+                    collections_used.append(collection_name)
+                    
+                    # Si on a suffisamment de résultats, on s'arrête
+                    if len(all_results) >= limit:
+                        break
+            except Exception as e:
+                print(f"Erreur lors de la recherche dans {collection_name}: {e}")
+                continue
         
-        # Formatage des résultats
+        # Limiter le nombre de résultats
+        all_results = all_results[:limit]
+        
+        # Si aucun résultat n'est trouvé, suggérer des améliorations sans bloquer
+        if not all_results:
+            return {
+                "format": format_type,
+                "content": ["Aucun résultat trouvé. Essayez de préciser votre requête ou d'utiliser d'autres termes de recherche."],
+                "sources": "",
+                "suggestions": [
+                    "Essayez d'ajouter plus de détails à votre requête",
+                    "Précisez le nom du client si vous recherchez des informations spécifiques à un client",
+                    "Mentionnez explicitement SAP ou NetSuite si votre question concerne un ERP spécifique"
+                ]
+            }
+        
+        # Formater les résultats selon le format spécifié
         formatted_results = []
-        for result in all_results[:limit]:
+        for result in all_results:
             if format_type == "Summary":
                 formatted_results.append(self._format_summary(result))
             elif format_type == "Detail":
                 formatted_results.append(self._format_detail(result))
             elif format_type == "Guide":
                 formatted_results.append(self._format_guide(result))
+            else:
+                # Format par défaut
+                formatted_results.append(self._format_response(result, format_type))
         
-        # Création de la réponse finale
         return {
             "format": format_type,
             "content": formatted_results,
             "sources": ", ".join(collections_used)
         }
     
+    def _format_response(self, result, format_type):
+        """
+        Formate un résultat selon le type de format demandé
+        
+        Args:
+            result (dict): Résultat à formater
+            format_type (str): Type de format (Summary, Detail, Guide)
+            
+        Returns:
+            str: Résultat formaté
+        """
+        if format_type == "Summary":
+            return self._format_summary(result)
+        elif format_type == "Detail":
+            return self._format_detail(result)
+        elif format_type == "Guide":
+            return self._format_guide(result)
+        else:
+            # Format par défaut (Summary)
+            return self._format_summary(result)
     def _format_summary(self, content: Dict[str, Any]) -> str:
         """
         Formate la réponse en résumé bref
