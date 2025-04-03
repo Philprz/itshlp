@@ -39,7 +39,7 @@ class SearchRequest(BaseModel):
     client: Optional[str] = None
     erp: Optional[str] = None
     format: Optional[str] = "Summary"
-    recentOnly: Optional[bool] = False
+    #recentOnly: Optional[bool] = False
     limit: Optional[int] = 5
 
 class SearchResponse(BaseModel):

@@ -8,9 +8,26 @@ et de formater les réponses selon les formats demandés.
 """
 
 import csv
+import os
+import json
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
+from openai import OpenAI
+from dotenv import load_dotenv
+from qdrant_client.http.models import FieldCondition, MatchValue, Range, Filter
 
+# Chargement des variables d'environnement
+load_dotenv()
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Définition du prompt système pour OpenAI
+system_prompt = """Tu es un assistant spécialisé dans l'analyse de requêtes pour le système de recherche IT SPIRIT.
+Analyse la requête de l'utilisateur et structure-la en JSON avec les éléments suivants:
+- collections: Liste des collections à rechercher (parmi JIRA, CONFLUENCE, ZENDESK, NETSUITE, NETSUITE_DUMMIES, SAP)
+- filters: Dictionnaire de filtres (client, erp, date, etc.)
+- use_embedding: Booléen indiquant s'il faut utiliser l'embedding pour la recherche
+- limit: Nombre de résultats à retourner
+"""
 # Définition des collections
 COLLECTIONS = ["JIRA", "CONFLUENCE", "ZENDESK", "NETSUITE", "NETSUITE_DUMMIES", "SAP"]
 
@@ -31,6 +48,26 @@ class QdrantSystem:
         self.collections = COLLECTIONS
         self.formats = FORMATS
         
+    def enrich_query_with_openai(self, user_query):
+        response = openai_client.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_query}
+            ],
+            temperature=0.0,
+            max_tokens=300
+        )
+        
+        enriched_query = response.choices[0].message.content.strip()
+
+        try:
+            enriched_json = json.loads(enriched_query)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Réponse GPT non conforme : {enriched_query}") from e
+
+        return enriched_json
+    
     def _load_clients(self, clients_file: str) -> Dict[str, Dict[str, Any]]:
         """
         Charge les informations clients depuis le fichier CSV
@@ -65,7 +102,37 @@ class QdrantSystem:
                             clients[client_name][field] = row[csv_field]
         
         return clients
-    
+    def simple_filter_search(self, collection_name, client_name=None, recent_only=False, limit=5):
+        filter_conditions = []
+
+        if client_name:
+            filter_conditions.append(
+                FieldCondition(
+                    key="client",
+                    match=MatchValue(value=client_name)
+                )
+            )
+
+        if recent_only:
+            six_months_ago = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
+            filter_conditions.append(
+                FieldCondition(
+                    key="created",
+                    range=Range(gte=six_months_ago)
+                )
+            )
+
+        search_filter = Filter(must=filter_conditions) if filter_conditions else None
+
+        search_result = self.client.scroll(
+            collection_name=self.collections[collection_name],
+            scroll_filter=search_filter,
+            limit=limit,
+            with_payload=True
+        )
+
+        return [hit.payload for hit in search_result[0]]
+
     def get_client_erp(self, client_name: str) -> str:
         """
         Récupère le système ERP utilisé par un client

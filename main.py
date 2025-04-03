@@ -170,120 +170,88 @@ class QdrantSystem:
         
         # Par défaut, prioriser les collections les plus récentes
         return ["JIRA", "CONFLUENCE", "ZENDESK", "SAP", "NETSUITE", "NETSUITE_DUMMIES"]
-    def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary"):
+    def process_query(self, query, limit=5, format_type="Summary"):
         """
         Traite une requête utilisateur et renvoie les résultats formatés.
-        
+
         Args:
-            query (str): La requête de l'utilisateur
-            client_name (str, optional): Nom du client. Defaults to None.
-            erp (str, optional): ERP spécifique (SAP ou NetSuite). Defaults to None.
-            recent_only (bool, optional): Limiter aux résultats récents. Defaults to False.
+            query (str): La requête de l'utilisateur.
             limit (int, optional): Nombre maximum de résultats. Defaults to 5.
             format_type (str, optional): Type de formatage (Summary, Detail, Guide). Defaults to "Summary".
-            
+
         Returns:
-            dict: Résultats formatés
+            dict: Résultats formatés.
         """
-        # Vérifier que la requête n'est pas vide
-        if not query:
-            return {
-                "format": format_type,
-                "content": ["Veuillez entrer une requête de recherche"],
-                "sources": ""
-            }
-        
-        # Ajouter des logs pour le débogage
-        print(f"Requête reçue: {query}")
-        print(f"Client initial: {client_name}")
-        print(f"ERP initial: {erp}")
-        
-        # Analyser les patterns dans la requête
-        extracted_info = self._analyze_query_patterns(query)
-        
-        # Utiliser les informations extraites si elles ne sont pas déjà spécifiées
-        if not client_name and extracted_info["client"]:
-            client_name = extracted_info["client"]
-            print(f"Client détecté dans la requête: {client_name}")
-        
-        if not erp and extracted_info["erp"]:
-            erp = extracted_info["erp"]
-            print(f"ERP détecté dans la requête: {erp}")
-        
-        # Pour les requêtes de tickets, forcer recent_only à True par défaut
-        if extracted_info["is_ticket_request"]:
-            recent_only = extracted_info.get("recent_only", True)
-            limit = extracted_info.get("limit", 5)
-            print(f"Requête de tickets détectée: recent_only={recent_only}, limit={limit}")
-        
-        # Supprimer complètement la vérification d'ambiguïté
-        # Ne plus vérifier si la requête est ambiguë
-        
-        # Récupération des collections prioritaires
-        collections = self._get_prioritized_collections(client_name, erp, query)
-        print(f"Collections prioritaires: {collections}")
-        
-        # Recherche dans chaque collection
+        from query_system import enrich_query_with_openai, openai_client
+        enriched_query = enrich_query_with_openai(query)
+
+        collections = enriched_query.get("collections", self.get_prioritized_collections())
+        filters = enriched_query.get("filters", {})
+        use_embedding = enriched_query.get("use_embedding", True)
+        limit = enriched_query.get("limit", limit)
+
         all_results = []
-        collections_used = []
-        
+
         for collection_name in collections:
-            try:
-                print(f"Recherche dans la collection {collection_name}...")
-                results = self._search_in_collection(
-                    collection_name,
-                    query,
-                    client_name=client_name,
-                    recent_only=recent_only,
+            qdrant_filters = []
+
+            for field, condition in filters.items():
+                if "match" in condition:
+                    qdrant_filters.append(
+                        FieldCondition(key=field, match=MatchValue(value=condition["match"]))
+                    )
+                elif "range" in condition:
+                    qdrant_filters.append(
+                        FieldCondition(key=field, range=Range(**condition["range"]))
+                    )
+                elif "in" in condition:
+                    qdrant_filters.append(
+                        FieldCondition(key=field, match=MatchValue(value=condition["in"]))
+                    )
+
+            search_filter = Filter(must=qdrant_filters) if qdrant_filters else None
+
+            if use_embedding:
+                embedding_response = openai_client.Embedding.create(
+                    input=query,
+                    model="text-embedding-ada-002"
+                )
+                query_vector = embedding_response['data'][0]['embedding']
+                search_result = self.client.search(
+                    collection_name=self.collections[collection_name],
+                    query_vector=query_vector,
+                    query_filter=search_filter,
                     limit=limit
                 )
-                
-                if results:
-                    print(f"Résultats trouvés dans {collection_name}: {len(results)}")
-                    all_results.extend(results)
-                    collections_used.append(collection_name)
-                    
-                    # Si on a suffisamment de résultats, on s'arrête
-                    if len(all_results) >= limit:
-                        break
-                else:
-                    print(f"Aucun résultat trouvé dans {collection_name}")
-            except Exception as e:
-                print(f"Erreur lors de la recherche dans {collection_name}: {e}")
-                continue
-        
-        # Limiter le nombre de résultats
-        all_results = all_results[:limit]
-        print(f"Nombre total de résultats: {len(all_results)}")
-        
-        # Si aucun résultat n'est trouvé, suggérer des améliorations sans bloquer
+            else:
+                search_result = self.client.scroll(
+                    collection_name=self.collections[collection_name],
+                    scroll_filter=search_filter,
+                    limit=limit
+                )[0]
+
+            all_results.extend([hit.payload for hit in search_result])
+
+            if len(all_results) >= limit:
+                break
+
         if not all_results:
             suggestions = [
                 "Essayez d'ajouter plus de détails à votre requête",
                 "Précisez le nom du client si vous recherchez des informations spécifiques à un client",
                 "Mentionnez explicitement SAP ou NetSuite si votre question concerne un ERP spécifique"
             ]
-            
-            # Ajouter des suggestions spécifiques en fonction du contexte
-            if client_name:
-                suggestions.append(f"Essayez une requête plus générale sans spécifier le client {client_name}")
-            if erp:
-                suggestions.append(f"Essayez une requête plus générale sans spécifier l'ERP {erp}")
-            
             return {
                 "format": format_type,
                 "content": ["Aucun résultat trouvé. Essayez de préciser votre requête ou d'utiliser d'autres termes de recherche."],
                 "sources": "",
                 "suggestions": suggestions
             }
-        
-        # Formater les résultats
-        formatted_results = [self._format_response(result, format_type) for result in all_results]
-        
+
         return {
             "format": format_type,
-            "content": formatted_results,
-            "sources": ", ".join(collections_used)
+            "content": [self._format_response(r, format_type) for r in all_results[:limit]],
+            "sources": ", ".join(collections)
         }
 
     def _connect_to_qdrant(self) -> QdrantClient:
@@ -512,15 +480,15 @@ class QdrantSystem:
             
             # Génération d'embedding avec l'API OpenAI
             import os
-            import openai
+            from openai import OpenAI
             from dotenv import load_dotenv
 
             # Chargement de la clé API OpenAI depuis les variables d'environnement
             load_dotenv()
-            openai.api_key = os.getenv("OPENAI_API_KEY")
+            openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
             # Génération de l'embedding avec le modèle text-embedding-ada-002
-            response = openai.Embedding.create(
+            response = openai_client.Embedding.create(
                 input=query,
                 model="text-embedding-ada-002"
             )
