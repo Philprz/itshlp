@@ -68,13 +68,6 @@ async def search(request: SearchRequest):
         print(f"Recent only: {request.recentOnly}")
         print(f"Limit: {request.limit}")
 
-        # Vérification si la requête est ambiguë
-        if qdrant_system.is_query_ambiguous(request.query, request.client, request.erp):
-            return {
-                "format": "Clarification",
-                "content": ["Votre requête est ambiguë. Pourriez-vous préciser pour quel ERP (SAP ou NetSuite) vous souhaitez des informations ?"],
-                "sources": ""
-            }
 
         # Traitement de la requête
         result = qdrant_system.process_query(

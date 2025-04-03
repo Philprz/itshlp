@@ -510,10 +510,22 @@ class QdrantSystem:
                     must=filter_conditions
                 )
             
-            # Simulation de vecteur d'embedding pour la requête
-            # Dans une implémentation réelle, nous utiliserions un modèle d'embedding
-            import numpy as np
-            query_vector = np.random.rand(1536).tolist()
+            # Génération d'embedding avec l'API OpenAI
+            import os
+            import openai
+            from dotenv import load_dotenv
+
+            # Chargement de la clé API OpenAI depuis les variables d'environnement
+            load_dotenv()
+            openai.api_key = os.getenv("OPENAI_API_KEY")
+
+            # Génération de l'embedding avec le modèle text-embedding-ada-002
+            response = openai.Embedding.create(
+                input=query,
+                model="text-embedding-ada-002"
+            )
+            query_vector = response['data'][0]['embedding']
+
             
             # Exécution de la recherche
             search_result = self.client.search(
@@ -528,28 +540,7 @@ class QdrantSystem:
         except Exception as e:
             print(f"Erreur lors de la recherche dans la collection {collection_name}: {e}")
             return []
-    
-    def is_query_ambiguous(self, query: str, client_name: str, erp: str) -> bool:
-        """
-        Vérifie si une requête est ambiguë
-        
-        Args:
-            query: Requête de recherche
-            client_name: Nom du client (optionnel)
-            erp: Système ERP (optionnel)
-            
-        Returns:
-            True si la requête est ambiguë, False sinon
-        """
-        # Si on n'a pas de client ni d'ERP et que la requête ne les mentionne pas
-        if not client_name and not erp:
-            # Vérifier si la requête mentionne un ERP
-            erp_mentioned = "SAP" in query or "NetSuite" in query
-            
-            if not erp_mentioned:
-                return True
-        
-        return False
+
     
     def _format_response(self, result, format_type="Summary"):
         """
