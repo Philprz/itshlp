@@ -7,6 +7,7 @@ Ce programme expose une API REST pour interroger les collections Qdrant
 """
 
 import os
+import traceback
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,7 +59,15 @@ async def search(request: SearchRequest):
         # Vérification des paramètres requis
         if not request.query:
             raise HTTPException(status_code=400, detail="Le paramètre query est requis")
-        
+
+        # Ajouter des logs pour le débogage
+        print(f"Requête reçue: {request.query}")
+        print(f"Client: {request.client}")
+        print(f"ERP: {request.erp}")
+        print(f"Format: {request.format}")
+        print(f"Recent only: {request.recentOnly}")
+        print(f"Limit: {request.limit}")
+
         # Vérification si la requête est ambiguë
         if qdrant_system.is_query_ambiguous(request.query, request.client, request.erp):
             return {
@@ -66,7 +75,7 @@ async def search(request: SearchRequest):
                 "content": ["Votre requête est ambiguë. Pourriez-vous préciser pour quel ERP (SAP ou NetSuite) vous souhaitez des informations ?"],
                 "sources": ""
             }
-        
+
         # Traitement de la requête
         result = qdrant_system.process_query(
             query=request.query,
@@ -76,26 +85,52 @@ async def search(request: SearchRequest):
             limit=request.limit,
             format_type=request.format
         )
-        
+
+        # Ajouter des logs pour le débogage
+        print(f"Résultat: {result}")
+
         # Extraction et formatage de la réponse
         if isinstance(result, dict) and "content" in result and "sources" in result:
             content = result.get("content", [])
             sources = result.get("sources", "")
             format_type = result.get("format", request.format)
         else:
-            # Compatibilité avec la version 2 où result pourrait être directement renvoyé
             content = result if isinstance(result, list) else [str(result)]
             sources = ""
             format_type = request.format
-        
+
         return {
             "format": format_type,
             "content": content,
             "sources": sources
         }
-        
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Erreur lors du traitement de la requête: {str(e)}")
+        traceback.print_exc()  # Afficher la stack trace complète
+        return {
+            "format": "Error",
+            "content": [f"Une erreur s'est produite lors du traitement de votre requête: {str(e)}"],
+            "sources": ""
+        }
+
+@app.get("/api/test")
+async def test():
+    """
+    Endpoint de test pour vérifier que l'API fonctionne correctement.
+    """
+    return {
+        "status": "success",
+        "message": "API fonctionnelle",
+        "version": "1.1.0",
+        "features": [
+            "Interprétation flexible des requêtes",
+            "Détection des clients et ERP",
+            "Formatage des dates en jj/mm/aa",
+            "Priorisation intelligente des collections"
+        ]
+    }
+
 
 if __name__ == "__main__":
     import uvicorn

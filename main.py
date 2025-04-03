@@ -8,6 +8,7 @@ sur les clients IT SPIRIT et les systèmes ERP (SAP et NetSuite).
 """
 
 import os
+import re
 import csv
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
@@ -55,7 +56,236 @@ class QdrantSystem:
         self.collections = COLLECTIONS
         self.formats = FORMATS
         self.client = self._connect_to_qdrant()
+    def _analyze_query_patterns(self, query):
+        """
+        Analyse la requête pour détecter des patterns spécifiques et extraire des informations.
         
+        Args:
+            query (str): La requête de l'utilisateur
+            
+        Returns:
+            dict: Informations extraites de la requête (client, erp, type de demande, etc.)
+        """
+        query_lower = query.lower()
+        extracted_info = {
+            "client": None,
+            "erp": None,
+            "is_ticket_request": False,
+            "recent_only": True,  # Par défaut, on cherche les tickets récents
+            "limit": 5  # Par défaut, on limite à 5 tickets
+        }
+        
+        # Détecter les patterns de type "tickets [CLIENT]" (utiliser search au lieu de match)
+        ticket_client_pattern = re.search(r"tickets?\s+(\w+)", query_lower)
+        if ticket_client_pattern:
+            client_name = ticket_client_pattern.group(1).upper()
+            extracted_info["client"] = client_name
+            extracted_info["is_ticket_request"] = True
+            
+            # Vérifier si le client existe dans notre liste
+            if self._client_exists(client_name):
+                print(f"Client trouvé: {client_name}")
+            else:
+                print(f"Client non trouvé dans la liste: {client_name}, mais on continue la recherche")
+        
+        # Détecter les clients mentionnés en fin de phrase
+        if not extracted_info["client"]:
+            client_pattern = re.search(r"\b(\w+)$", query_lower)
+            if client_pattern:
+                potential_client = client_pattern.group(1).upper()
+                # Vérifier si c'est un client connu
+                if self._client_exists(potential_client):
+                    extracted_info["client"] = potential_client
+                    print(f"Client détecté en fin de phrase: {potential_client}")
+        
+        # Détecter les mentions d'ERP
+        if "sap" in query_lower:
+            extracted_info["erp"] = "SAP"
+        elif "netsuite" in query_lower or "net suite" in query_lower:
+            extracted_info["erp"] = "NetSuite"
+        
+        # Détecter les mentions de période
+        if "dernier" in query_lower or "récent" in query_lower:
+            extracted_info["recent_only"] = True
+        
+        # Détecter les mentions de quantité
+        quantity_pattern = re.search(r"(\d+)\s+tickets", query_lower)
+        if quantity_pattern:
+            try:
+                extracted_info["limit"] = int(quantity_pattern.group(1))
+            except ValueError:
+                pass  # On garde la valeur par défaut
+        
+        # Détecter si la requête concerne des tickets même si le mot "ticket" n'est pas explicitement mentionné
+        if "problème" in query_lower or "incident" in query_lower or "demande" in query_lower:
+            extracted_info["is_ticket_request"] = True
+        
+        return extracted_info
+    def _client_exists(self, client_name):
+        """
+        Vérifie si un client existe dans notre liste de clients.
+        
+        Args:
+            client_name (str): Nom du client à vérifier
+            
+        Returns:
+            bool: True si le client existe, False sinon
+        """
+        # Charger la liste des clients depuis le fichier CSV
+        try:
+            client_list_path = os.path.join(os.path.dirname(__file__), "ListeClients.csv")
+            if os.path.exists(client_list_path):
+                with open(client_list_path, "r", encoding="utf-8") as f:
+                    clients = [line.strip().upper() for line in f.readlines()]
+                return client_name.upper() in clients
+            return False
+        except Exception as e:
+            print(f"Erreur lors de la vérification du client: {e}")
+            return False
+    def _get_prioritized_collections(self, client_name=None, erp=None, query=None):
+        """
+        Détermine l'ordre de priorité des collections à interroger.
+        
+        Args:
+            client_name (str, optional): Nom du client. Defaults to None.
+            erp (str, optional): ERP spécifique. Defaults to None.
+            query (str, optional): Requête utilisateur pour analyse contextuelle. Defaults to None.
+            
+        Returns:
+            list: Liste des collections dans l'ordre de priorité
+        """
+        # Si la requête contient "ticket" et un client est spécifié, prioriser les collections de tickets
+        if query and ("ticket" in query.lower() or "problème" in query.lower() or "incident" in query.lower()) and client_name:
+            return ["JIRA", "CONFLUENCE", "ZENDESK", "SAP", "NETSUITE", "NETSUITE_DUMMIES"]
+        
+        # Si un ERP est spécifié, prioriser les collections correspondantes
+        if erp == "SAP":
+            return ["SAP", "JIRA", "CONFLUENCE", "ZENDESK", "NETSUITE", "NETSUITE_DUMMIES"]
+        elif erp == "NetSuite":
+            return ["NETSUITE", "NETSUITE_DUMMIES", "JIRA", "CONFLUENCE", "ZENDESK", "SAP"]
+        
+        # Si un client est spécifié mais pas d'ERP, prioriser les collections de clients
+        if client_name:
+            return ["JIRA", "CONFLUENCE", "ZENDESK", "SAP", "NETSUITE", "NETSUITE_DUMMIES"]
+        
+        # Par défaut, prioriser les collections les plus récentes
+        return ["JIRA", "CONFLUENCE", "ZENDESK", "SAP", "NETSUITE", "NETSUITE_DUMMIES"]
+    def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary"):
+        """
+        Traite une requête utilisateur et renvoie les résultats formatés.
+        
+        Args:
+            query (str): La requête de l'utilisateur
+            client_name (str, optional): Nom du client. Defaults to None.
+            erp (str, optional): ERP spécifique (SAP ou NetSuite). Defaults to None.
+            recent_only (bool, optional): Limiter aux résultats récents. Defaults to False.
+            limit (int, optional): Nombre maximum de résultats. Defaults to 5.
+            format_type (str, optional): Type de formatage (Summary, Detail, Guide). Defaults to "Summary".
+            
+        Returns:
+            dict: Résultats formatés
+        """
+        # Vérifier que la requête n'est pas vide
+        if not query:
+            return {
+                "format": format_type,
+                "content": ["Veuillez entrer une requête de recherche"],
+                "sources": ""
+            }
+        
+        # Ajouter des logs pour le débogage
+        print(f"Requête reçue: {query}")
+        print(f"Client initial: {client_name}")
+        print(f"ERP initial: {erp}")
+        
+        # Analyser les patterns dans la requête
+        extracted_info = self._analyze_query_patterns(query)
+        
+        # Utiliser les informations extraites si elles ne sont pas déjà spécifiées
+        if not client_name and extracted_info["client"]:
+            client_name = extracted_info["client"]
+            print(f"Client détecté dans la requête: {client_name}")
+        
+        if not erp and extracted_info["erp"]:
+            erp = extracted_info["erp"]
+            print(f"ERP détecté dans la requête: {erp}")
+        
+        # Pour les requêtes de tickets, forcer recent_only à True par défaut
+        if extracted_info["is_ticket_request"]:
+            recent_only = extracted_info.get("recent_only", True)
+            limit = extracted_info.get("limit", 5)
+            print(f"Requête de tickets détectée: recent_only={recent_only}, limit={limit}")
+        
+        # Supprimer complètement la vérification d'ambiguïté
+        # Ne plus vérifier si la requête est ambiguë
+        
+        # Récupération des collections prioritaires
+        collections = self._get_prioritized_collections(client_name, erp, query)
+        print(f"Collections prioritaires: {collections}")
+        
+        # Recherche dans chaque collection
+        all_results = []
+        collections_used = []
+        
+        for collection_name in collections:
+            try:
+                print(f"Recherche dans la collection {collection_name}...")
+                results = self._search_in_collection(
+                    collection_name,
+                    query,
+                    client_name=client_name,
+                    recent_only=recent_only,
+                    limit=limit
+                )
+                
+                if results:
+                    print(f"Résultats trouvés dans {collection_name}: {len(results)}")
+                    all_results.extend(results)
+                    collections_used.append(collection_name)
+                    
+                    # Si on a suffisamment de résultats, on s'arrête
+                    if len(all_results) >= limit:
+                        break
+                else:
+                    print(f"Aucun résultat trouvé dans {collection_name}")
+            except Exception as e:
+                print(f"Erreur lors de la recherche dans {collection_name}: {e}")
+                continue
+        
+        # Limiter le nombre de résultats
+        all_results = all_results[:limit]
+        print(f"Nombre total de résultats: {len(all_results)}")
+        
+        # Si aucun résultat n'est trouvé, suggérer des améliorations sans bloquer
+        if not all_results:
+            suggestions = [
+                "Essayez d'ajouter plus de détails à votre requête",
+                "Précisez le nom du client si vous recherchez des informations spécifiques à un client",
+                "Mentionnez explicitement SAP ou NetSuite si votre question concerne un ERP spécifique"
+            ]
+            
+            # Ajouter des suggestions spécifiques en fonction du contexte
+            if client_name:
+                suggestions.append(f"Essayez une requête plus générale sans spécifier le client {client_name}")
+            if erp:
+                suggestions.append(f"Essayez une requête plus générale sans spécifier l'ERP {erp}")
+            
+            return {
+                "format": format_type,
+                "content": ["Aucun résultat trouvé. Essayez de préciser votre requête ou d'utiliser d'autres termes de recherche."],
+                "sources": "",
+                "suggestions": suggestions
+            }
+        
+        # Formater les résultats
+        formatted_results = [self._format_response(result, format_type) for result in all_results]
+        
+        return {
+            "format": format_type,
+            "content": formatted_results,
+            "sources": ", ".join(collections_used)
+        }
+
     def _connect_to_qdrant(self) -> QdrantClient:
         """
         Établit la connexion avec Qdrant
@@ -321,116 +551,66 @@ class QdrantSystem:
         
         return False
     
-    def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary"):
+    def _format_response(self, result, format_type="Summary"):
         """
-        Traite une requête utilisateur et renvoie les résultats formatés.
-        
-        Args:
-            query (str): La requête de l'utilisateur
-            client_name (str, optional): Nom du client. Defaults to None.
-            erp (str, optional): ERP spécifique (SAP ou NetSuite). Defaults to None.
-            recent_only (bool, optional): Limiter aux résultats récents. Defaults to False.
-            limit (int, optional): Nombre maximum de résultats. Defaults to 5.
-            format_type (str, optional): Type de formatage (Summary, Detail, Guide). Defaults to "Summary".
-            
-        Returns:
-            dict: Résultats formatés
-        """
-        # Vérifier que la requête n'est pas vide
-        if not query:
-            return {
-                "format": format_type,
-                "content": ["Veuillez entrer une requête de recherche"],
-                "sources": ""
-            }
-        
-        # Vérification du format
-        if format_type not in self.formats:
-            format_type = "Summary"
-        
-        # Récupération des collections prioritaires en incluant la requête
-        collections = self._get_prioritized_collections(client_name, erp, query)
-        
-        # Recherche dans chaque collection
-        all_results = []
-        collections_used = []
-        
-        for collection_name in collections:
-            try:
-                results = self._search_in_collection(
-                    collection_name,
-                    query,
-                    client_name=client_name,
-                    recent_only=recent_only,
-                    limit=limit
-                )
-                
-                if results:
-                    all_results.extend(results)
-                    collections_used.append(collection_name)
-                    
-                    # Si on a suffisamment de résultats, on s'arrête
-                    if len(all_results) >= limit:
-                        break
-            except Exception as e:
-                print(f"Erreur lors de la recherche dans {collection_name}: {e}")
-                continue
-        
-        # Limiter le nombre de résultats
-        all_results = all_results[:limit]
-        
-        # Si aucun résultat n'est trouvé, suggérer des améliorations sans bloquer
-        if not all_results:
-            return {
-                "format": format_type,
-                "content": ["Aucun résultat trouvé. Essayez de préciser votre requête ou d'utiliser d'autres termes de recherche."],
-                "sources": "",
-                "suggestions": [
-                    "Essayez d'ajouter plus de détails à votre requête",
-                    "Précisez le nom du client si vous recherchez des informations spécifiques à un client",
-                    "Mentionnez explicitement SAP ou NetSuite si votre question concerne un ERP spécifique"
-                ]
-            }
-        
-        # Formater les résultats selon le format spécifié
-        formatted_results = []
-        for result in all_results:
-            if format_type == "Summary":
-                formatted_results.append(self._format_summary(result))
-            elif format_type == "Detail":
-                formatted_results.append(self._format_detail(result))
-            elif format_type == "Guide":
-                formatted_results.append(self._format_guide(result))
-            else:
-                # Format par défaut
-                formatted_results.append(self._format_response(result, format_type))
-        
-        return {
-            "format": format_type,
-            "content": formatted_results,
-            "sources": ", ".join(collections_used)
-        }
-    
-    def _format_response(self, result, format_type):
-        """
-        Formate un résultat selon le type de format demandé
+        Formate un résultat selon le type de formatage demandé.
         
         Args:
             result (dict): Résultat à formater
-            format_type (str): Type de format (Summary, Detail, Guide)
+            format_type (str, optional): Type de formatage (Summary, Detail, Guide). Defaults to "Summary".
             
         Returns:
             str: Résultat formaté
         """
+        # Extraire les informations du résultat
+        title = result.get("title", "Sans titre")
+        content = result.get("content", "")
+        created_at = result.get("created_at", 0)
+        updated_at = result.get("updated_at", 0)
+        author = result.get("author", "")
+        
+        # Formater les dates en jj/mm/aa
+        created_date = self._format_date(created_at)
+        updated_date = self._format_date(updated_at)
+        
+        # Formater selon le type demandé
         if format_type == "Summary":
-            return self._format_summary(result)
+            return f"{title} - {created_date}"
+        
         elif format_type == "Detail":
-            return self._format_detail(result)
+            return f"{title}\n\nCréé le: {created_date}\nMis à jour le: {updated_date}\nAuteur: {author}\n\n{content[:200]}..."
+        
         elif format_type == "Guide":
-            return self._format_guide(result)
-        else:
-            # Format par défaut (Summary)
-            return self._format_summary(result)
+            # Extraire les étapes du contenu
+            steps = re.findall(r"(\d+\.\s+[^\n]+)", content)
+            formatted_steps = "\n".join(steps[:5]) if steps else "Aucune étape identifiée"
+            
+            return f"{title}\n\nÉtapes principales:\n{formatted_steps}\n\nCréé le: {created_date}"
+        
+        # Par défaut, renvoyer un résumé
+        return f"{title} - {created_date}"
+    def _format_date(self, timestamp):
+        """
+        Formate un timestamp Unix en date lisible au format jj/mm/aa.
+        
+        Args:
+            timestamp (int): Timestamp Unix
+            
+        Returns:
+            str: Date formatée
+        """
+        if not timestamp:
+            return "Date inconnue"
+        
+        try:
+            # Convertir le timestamp en date
+            date = datetime.datetime.fromtimestamp(int(timestamp))
+            # Formater la date en jj/mm/aa
+            return date.strftime("%d/%m/%y")
+        except Exception as e:
+            print(f"Erreur lors du formatage de la date: {e}")
+            return "Date invalide"
+
     def _format_summary(self, content: Dict[str, Any]) -> str:
         """
         Formate la réponse en résumé bref
