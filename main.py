@@ -170,12 +170,15 @@ class QdrantSystem:
         
         # Par défaut, prioriser les collections les plus récentes
         return ["JIRA", "CONFLUENCE", "ZENDESK", "SAP", "NETSUITE", "NETSUITE_DUMMIES"]
-    def process_query(self, query, limit=5, format_type="Summary"):
+    def process_query(self, query, client_name=None, erp=None, recent_only=True, limit=5, format_type="Summary"):
         """
         Traite une requête utilisateur et renvoie les résultats formatés.
 
         Args:
             query (str): La requête de l'utilisateur.
+            client_name (str, optional): Nom du client. Defaults to None.
+            erp (str, optional): ERP concerné (SAP ou NetSuite). Defaults to None.
+            recent_only (bool, optional): Recherche uniquement les résultats récents. Defaults to True.
             limit (int, optional): Nombre maximum de résultats. Defaults to 5.
             format_type (str, optional): Type de formatage (Summary, Detail, Guide). Defaults to "Summary".
 
@@ -183,54 +186,76 @@ class QdrantSystem:
             dict: Résultats formatés.
         """
         from query_system import enrich_query_with_openai, openai_client
-        enriched_query = enrich_query_with_openai(query)
+        from qdrant_client.http.models import Filter, FieldCondition, MatchValue, Range
 
-        collections = enriched_query.get("collections", self.get_prioritized_collections())
+        enriched_query = enrich_query_with_openai(query)
+        collections = enriched_query.get("collections", self.get_prioritized_collections(client_name, erp))
         filters = enriched_query.get("filters", {})
         use_embedding = enriched_query.get("use_embedding", True)
         limit = enriched_query.get("limit", limit)
 
         all_results = []
 
+        can_use_simple_filter = (
+            not use_embedding and
+            set(filters.keys()).issubset({"client", "created"})
+        )
+
         for collection_name in collections:
-            qdrant_filters = []
+            if can_use_simple_filter:
+                client_filter = filters.get("client", {}).get("match", client_name)
+                date_range = filters.get("created", {}).get("range", {})
+                recent_only_flag = recent_only
 
-            for field, condition in filters.items():
-                if "match" in condition:
-                    qdrant_filters.append(
-                        FieldCondition(key=field, match=MatchValue(value=condition["match"]))
-                    )
-                elif "range" in condition:
-                    qdrant_filters.append(
-                        FieldCondition(key=field, range=Range(**condition["range"]))
-                    )
-                elif "in" in condition:
-                    qdrant_filters.append(
-                        FieldCondition(key=field, match=MatchValue(value=condition["in"]))
-                    )
+                if date_range.get("gte"):
+                    recent_only_flag = True
 
-            search_filter = Filter(must=qdrant_filters) if qdrant_filters else None
-
-            if use_embedding:
-                embedding_response = openai_client.Embedding.create(
-                    input=query,
-                    model="text-embedding-ada-002"
-                )
-                query_vector = embedding_response['data'][0]['embedding']
-                search_result = self.client.search(
-                    collection_name=self.collections[collection_name],
-                    query_vector=query_vector,
-                    query_filter=search_filter,
+                search_result = self.simple_filter_search(
+                    collection_name=collection_name,
+                    client_name=client_filter,
+                    recent_only=recent_only_flag,
                     limit=limit
                 )
             else:
-                search_result = self.client.scroll(
-                    collection_name=self.collections[collection_name],
-                    scroll_filter=search_filter,
-                    limit=limit
-                )[0]
+                qdrant_filters = []
+                for field, condition in filters.items():
+                    if "match" in condition:
+                        qdrant_filters.append(
+                            FieldCondition(key=field, match=MatchValue(value=condition["match"]))
+                        )
+                    elif "range" in condition:
+                        qdrant_filters.append(
+                            FieldCondition(key=field, range=Range(**condition["range"]))
+                        )
+                    elif "in" in condition:
+                        qdrant_filters.append(
+                            FieldCondition(key=field, match=MatchValue(value=condition["in"]))
+                        )
 
-            all_results.extend([hit.payload for hit in search_result])
+                search_filter = Filter(must=qdrant_filters) if qdrant_filters else None
+
+                if use_embedding:
+                    embedding_response = openai_client.Embedding.create(
+                        input=query,
+                        model="text-embedding-ada-002"
+                    )
+                    query_vector = embedding_response['data'][0]['embedding']
+                    search_result = self.client.search(
+                        collection_name=self.collections[collection_name],
+                        query_vector=query_vector,
+                        query_filter=search_filter,
+                        limit=limit
+                    )
+                else:
+                    search_result = self.client.scroll(
+                        collection_name=self.collections[collection_name],
+                        scroll_filter=search_filter,
+                        limit=limit
+                    )[0]
+
+                search_result = [hit.payload for hit in search_result]
+
+            all_results.extend(search_result)
 
             if len(all_results) >= limit:
                 break
@@ -244,7 +269,7 @@ class QdrantSystem:
             return {
                 "format": format_type,
                 "content": ["Aucun résultat trouvé. Essayez de préciser votre requête ou d'utiliser d'autres termes de recherche."],
-                "sources": "",
+                "sources": ", ".join(collections),
                 "suggestions": suggestions
             }
 
@@ -253,6 +278,7 @@ class QdrantSystem:
             "content": [self._format_response(r, format_type) for r in all_results[:limit]],
             "sources": ", ".join(collections)
         }
+
 
     def _connect_to_qdrant(self) -> QdrantClient:
         """
