@@ -540,7 +540,7 @@ class QdrantSystem:
         except Exception as e:
             print(f"Erreur lors de la recherche dans la collection {collection_name}: {e}")
             return []
-
+            """verification modification"""
     
     def _format_response(self, result, format_type="Summary"):
         """
