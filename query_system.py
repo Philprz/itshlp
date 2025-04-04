@@ -9,6 +9,7 @@ et de formater les réponses selon les formats demandés.
 
 import csv
 import os
+import re   
 import json
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
@@ -27,13 +28,16 @@ Analyse la requête de l'utilisateur et structure-la en JSON avec les éléments
 - filters: Dictionnaire de filtres (client, erp, date, etc.)
 - use_embedding: Booléen indiquant s'il faut utiliser l'embedding pour la recherche
 - limit: Nombre de résultats à retourner
+IMPORTANT : ne mets jamais de balises Markdown comme ```json autour de ta réponse. Donne seulement du JSON brut.
 """
 # Définition des collections
 COLLECTIONS = ["JIRA", "CONFLUENCE", "ZENDESK", "NETSUITE", "NETSUITE_DUMMIES", "SAP"]
 
 # Définition des formats de réponse
 FORMATS = ["Summary", "Detail", "Guide"]
-
+def extract_json(text: str) -> str:
+    match = re.search(r"\{[\s\S]*\}", text)
+    return match.group(0) if match else text
 class QdrantSystem:
     """Système de requêtes pour les collections Qdrant d'IT SPIRIT"""
     
@@ -60,7 +64,7 @@ class QdrantSystem:
         )
         
         enriched_query = response.choices[0].message.content.strip()
-
+        enriched_query = extract_json(enriched_query)
         try:
             enriched_json = json.loads(enriched_query)
         except json.JSONDecodeError as e:
