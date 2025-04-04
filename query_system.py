@@ -163,7 +163,7 @@ class QdrantSystem:
             filters["date"] = {"gte": six_months_ago}
             enriched_json["filters"] = filters
 
-        if "client" not in filters:
+        if not filters.get("client"):
             detected_client, score, _ = extract_client_name_from_csv(user_query)
             if detected_client:
                 filters["client"] = detected_client
@@ -349,10 +349,7 @@ class QdrantSystem:
             return date >= six_months_ago
         except (ValueError, TypeError):
             return False
-    def format_ticket_payload(self, payload: dict, score: float = None) -> dict:
-        """
-        Formate un payload de ticket en objet enrichi avec score, couleurs, lien, etc.
-        """
+    def format_ticket_payload(self, payload: dict, score: float = None, format_type: str = "Detail") -> dict:
         def get_score_color(score):
             if score is None:
                 return "gray"
@@ -363,7 +360,7 @@ class QdrantSystem:
             else:
                 return "red"
 
-        return {
+        base = {
             "client": payload.get("client", "N/A"),
             "source": payload.get("source_type", "N/A"),
             "summary": payload.get("summary", payload.get("description", "")),
@@ -372,8 +369,19 @@ class QdrantSystem:
             "assignee": payload.get("assignee", "N/A"),
             "url": payload.get("url", None),
             "score": round(score, 4) if score else None,
-            "color": get_score_color(score)
+            "color": get_score_color(score),
         }
+
+        if format_type == "Guide":
+            # Ajouter un champ "content" enrichi avec steps potentiels
+            content_parts = []
+            for key in ["summary", "description", "content", "text", "comments"]:
+                val = payload.get(key)
+                if val:
+                    content_parts.append(str(val))
+            base["content"] = "\n".join(content_parts)
+
+        return base
 
     def format_response(self, content: Dict[str, Any], format_type: str = "Summary") -> str:
         """
@@ -677,10 +685,21 @@ class QdrantSystem:
                         limit=limit,
                         filters=filters
                     )
-                    all_results.extend([
-                        self.format_ticket_payload(payload, score)
-                        for payload, score in results
-                    ])
+                    if format_type == "Detail":
+                        all_results.extend([
+                            self.format_ticket_payload(payload, score, format_type)
+                            for payload, score in results
+                        ])
+
+                        # 🔹 Tri par date descendante
+                        all_results.sort(key=lambda r: r.get("created", ""), reverse=True)
+
+                    else:
+                        all_results.extend([
+                            self._format_summary(payload)  # ou juste payload["summary"]
+                            for payload, score in results
+                            if "summary" in payload
+                        ])
                 else:
                     raw_results = self.simple_filter_search(
                         collection_name=collection_name,
