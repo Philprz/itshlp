@@ -18,6 +18,7 @@ from typing import List, Dict, Any
 from openai import OpenAI
 from dotenv import load_dotenv
 from qdrant_client.http.models import FieldCondition, MatchValue, Range, Filter
+from qdrant_client import QdrantClient
 from time import time
 
 # Chargement des variables d'environnement
@@ -127,7 +128,10 @@ class QdrantSystem:
         self.clients = self._load_clients(clients_file)
         self.collections = COLLECTIONS
         self.formats = FORMATS
-    
+        self.client = QdrantClient(
+            url=os.getenv("QDRANT_URL"),
+            api_key=os.getenv("QDRANT_API_KEY")
+        )
     def enrich_query_with_openai(self, user_query):
         """
         Enrichit une requête utilisateur en utilisant l'API OpenAI et en ajoutant des filtres locaux.
