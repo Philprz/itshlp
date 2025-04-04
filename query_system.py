@@ -206,7 +206,20 @@ class QdrantSystem:
                             clients[client_name][field] = row[csv_field]
         
         return clients
-    def simple_filter_search(self, collection_name, client_name=None, recent_only=False, limit=5):
+    def simple_filter_search(self, collection_name, client_name=None, recent_only=False, filters: Filter = None, limit=5):
+        """
+        Effectue une recherche simple dans une collection Qdrant sans vectorisation.
+
+        Args:
+            collection_name: Nom de la collection Qdrant
+            client_name: Nom du client pour le filtrage (optionnel)
+            recent_only: Si True, filtre les résultats pour les éléments créés il y a moins de 6 mois (optionnel)
+            filters: Objet Filter Qdrant à appliquer (filtrage par client, date, etc.) (optionnel)
+            limit: Nombre de résultats à retourner
+
+        Returns:
+            Liste des payloads formatés
+        """
         filter_conditions = []
 
         if client_name:
@@ -226,16 +239,19 @@ class QdrantSystem:
                 )
             )
 
-        search_filter = Filter(must=filter_conditions) if filter_conditions else None
+        if filters:
+            search_filter = filters
+        else:
+            search_filter = Filter(must=filter_conditions) if filter_conditions else None
 
         results, _ = self.client.scroll(
-    collection_name=collection_name,
+            collection_name=collection_name,
             scroll_filter=search_filter,
             limit=limit,
             with_payload=True
         )
 
-        return [hit.payload for hit in results]
+        return [self.format_ticket_payload(hit.payload) for hit in results]
 
     def search_in_collection(self, collection_name: str, query: str, client_name: str = None, recent_only: bool = False, limit: int = 5, filters: Filter = None):
         """
@@ -703,6 +719,7 @@ class QdrantSystem:
                 else:
                     raw_results = self.simple_filter_search(
                         collection_name=collection_name,
+                        filters=filters,  # priorité à la query enrichie
                         client_name=client_name,
                         recent_only=recent_only,
                         limit=limit
