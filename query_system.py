@@ -651,7 +651,9 @@ class QdrantSystem:
         enriched_query = self.enrich_query_with_openai(query)
         print(enriched_query)
         # Collections à rechercher
-        collections = enriched_query.get("collections", self.get_prioritized_collections(client_name, erp))
+        collections = enriched_query.get("collections")
+        if not collections:
+            collections = self.get_prioritized_collections(client_name, erp)
 
         # Filtres Qdrant construits à partir de la réponse enrichie
         filters = self.apply_filters(enriched_query.get("filters", {}))
