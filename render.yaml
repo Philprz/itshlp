@@ -26,5 +26,7 @@ services:
         value: SAP
       - key: QDRANT_API_KEY
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
     healthCheckPath: /
     autoDeploy: true

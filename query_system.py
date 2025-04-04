@@ -132,6 +132,36 @@ class QdrantSystem:
         )
 
         return [hit.payload for hit in search_result[0]]
+    def search_in_collection(self, collection_name: str, query: str, client_name: str = None, recent_only: bool = False, limit: int = 5, filters: Filter = None):
+        """
+        Effectue une recherche dans une collection avec vectorisation et filtres.
+
+        Args:
+            collection_name: Nom de la collection
+            query: Texte de la requête utilisateur
+            client_name: Nom du client (optionnel, redondant avec filters)
+            recent_only: Booléen pour filtrer les données récentes (non utilisé ici)
+            limit: Nombre de résultats à retourner
+            filters: Filtre Qdrant (déjà construit via enrich_query_with_openai)
+
+        Returns:
+            Liste des documents pertinents (payloads)
+        """
+        embedding_response = openai_client.embeddings.create(
+            input=query,
+            model="text-embedding-ada-002"
+        )
+        query_vector = embedding_response.data[0].embedding
+
+        results = self.client.search(
+            collection_name=collection_name,
+            query_vector=query_vector,
+            query_filter=filters,
+            limit=limit,
+            with_payload=True
+        )
+
+        return [hit.payload for hit in results]
 
     def get_client_erp(self, client_name: str) -> str:
         """
@@ -239,7 +269,45 @@ class QdrantSystem:
         elif format_type == "Guide":
             # Instructions étape par étape
             return self._format_guide(content)
-    
+    def apply_filters(self, filters: dict) -> Filter:
+        """
+        Transforme un dictionnaire de filtres en objet Filter pour Qdrant
+
+        Args:
+            filters: Dictionnaire de filtres (client, erp, date, etc.)
+
+        Returns:
+            Objet Filter compatible avec Qdrant
+        """
+        conditions = []
+
+        if "client" in filters:
+            conditions.append(
+                FieldCondition(key="client", match=MatchValue(value=filters["client"]))
+            )
+
+        if "erp" in filters:
+            conditions.append(
+                FieldCondition(key="erp", match=MatchValue(value=filters["erp"]))
+            )
+
+        if "date" in filters:
+            date_filter = filters["date"]
+            if isinstance(date_filter, dict):
+                gte = date_filter.get("gte")
+                lte = date_filter.get("lte")
+                if gte or lte:
+                    range_filter = {}
+                    if gte:
+                        range_filter["gte"] = gte
+                    if lte:
+                        range_filter["lte"] = lte
+                    conditions.append(
+                        FieldCondition(key="created", range=Range(**range_filter))
+                    )
+
+        return Filter(must=conditions) if conditions else None
+
     def _format_summary(self, content: Dict[str, Any]) -> str:
         """
         Formate la réponse en résumé bref
@@ -434,6 +502,66 @@ class QdrantSystem:
             "format": format_type,
             "content": content,
             "sources": ", ".join(collections_used)
+        }
+    def process_query(self, query, client_name=None, erp=None, recent_only=True, limit=5, format_type="Summary"):
+        """
+        Traite une requête utilisateur et renvoie les résultats formatés.
+        """
+        # Chargement du paramètre global d'embedding depuis .env
+        USE_EMBEDDING = os.getenv("USE_EMBEDDING", "true").lower() == "true"
+
+        enriched_query = self.enrich_query_with_openai(query)
+
+        # Collections à rechercher
+        collections = enriched_query.get("collections", self.get_prioritized_collections(client_name, erp))
+
+        # Filtres Qdrant construits à partir de la réponse enrichie
+        filters = self.apply_filters(enriched_query.get("filters", {}))
+
+        # Limite de résultats à retourner
+        limit = enriched_query.get("limit", limit)
+
+        # Priorité de l'embedding (prend celui de l'enrichissement s'il existe, sinon celui du .env)
+        use_embedding = enriched_query.get("use_embedding", USE_EMBEDDING)
+
+        all_results = []
+
+        for collection_name in collections:
+            try:
+                if use_embedding:
+                    results = self.search_in_collection(
+                        collection_name=collection_name,
+                        query=query,
+                        client_name=client_name,
+                        recent_only=recent_only,
+                        limit=limit,
+                        filters=filters
+                    )
+                else:
+                    results = self.simple_filter_search(
+                        collection_name=collection_name,
+                        client_name=client_name,
+                        recent_only=recent_only,
+                        limit=limit
+                    )
+
+                all_results.extend(results)
+                if len(all_results) >= limit:
+                    break
+            except Exception as e:
+                print(f"Erreur dans la collection {collection_name}: {str(e)}")
+
+        if not all_results:
+            return {
+                "format": format_type,
+                "content": ["Aucun résultat trouvé pour cette requête."],
+                "sources": ", ".join(collections)
+            }
+
+        return {
+            "format": format_type,
+            "content": [self.format_response(r, format_type) for r in all_results[:limit]],
+            "sources": ", ".join(collections)
         }
 
 # Fonction principale pour tester le système
