@@ -47,7 +47,7 @@ class QdrantSystem:
         self.clients = self._load_clients(clients_file)
         self.collections = COLLECTIONS
         self.formats = FORMATS
-        
+    #vérifier si cela a changé ?    
     def enrich_query_with_openai(self, user_query):
         response = openai_client.ChatCompletion.create(
             model="gpt-4o-mini",
