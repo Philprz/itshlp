@@ -37,7 +37,7 @@ COLLECTIONS = {
 # Définition des formats de réponse
 FORMATS = ["Summary", "Detail", "Guide"]
 
-def search_all_clients(query_text: str, format_type="Summary", recent_only=True, limit=3):
+def search_all_clients(query_text: str, format_type="Summary", recent_only=False, limit=3):
     """
     Exécute une requête pour tous les clients du fichier ListeClients.csv
     """
@@ -62,7 +62,7 @@ def search_all_clients(query_text: str, format_type="Summary", recent_only=True,
 
 
 if __name__ == "__main__":
-    results = search_all_clients("Problèmes de connexion", format_type="Summary", recent_only=True)
+    results = search_all_clients("Problèmes de connexion", format_type="Summary", recent_only=False)
 
     # Affichage des résultats
     for client, responses in results.items():

@@ -18,6 +18,7 @@ from typing import List, Dict, Any
 from openai import OpenAI
 from dotenv import load_dotenv
 from qdrant_client.http.models import FieldCondition, MatchValue, Range, Filter
+from time import time
 
 # Chargement des variables d'environnement
 load_dotenv()
@@ -31,6 +32,10 @@ Analyse la requête de l'utilisateur et structure-la en JSON avec les éléments
 - use_embedding: Booléen indiquant s'il faut utiliser l'embedding pour la recherche
 - limit: Nombre de résultats à retourner
 IMPORTANT : ne mets jamais de balises Markdown comme ```json autour de ta réponse. Donne seulement du JSON brut.
+
+Si la requête parle de sujets génériques liés à NetSuite ou SAP (ex: comment configurer un module), et que le mot ERP est mentionné ou implicite, ajoute un filtre \"erp\" avec \"NetSuite\" ou \"SAP\" et sélectionne les collections pertinentes.
+
+Si l'utilisateur utilise des termes vagues comme \"tickets récents\", remplace-les par un filtre de date de type {\"date\": {\"gte\": <timestamp il y a 6 mois>}}.
 """
 # Définition des collections
 COLLECTIONS = ["JIRA", "CONFLUENCE", "ZENDESK", "NETSUITE", "NETSUITE_DUMMIES", "SAP"]
@@ -102,6 +107,15 @@ class QdrantSystem:
         self.formats = FORMATS
     
     def enrich_query_with_openai(self, user_query):
+        """
+        Enrichit une requête utilisateur en utilisant l'API OpenAI et en ajoutant des filtres locaux.
+
+        Args:
+            user_query (str): La requête utilisateur à enrichir.
+
+        Returns:
+            dict: La requête enrichie sous forme de dictionnaire JSON.
+        """
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -113,25 +127,24 @@ class QdrantSystem:
         )
 
         enriched_query = response.choices[0].message.content.strip()
+        enriched_json = json.loads(extract_json(enriched_query))
 
-        try:
-            enriched_json = json.loads(enriched_query)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Réponse GPT non conforme : {enriched_query}") from e
+        filters = enriched_json.get("filters", {})
+        query_upper = user_query.upper()
 
-        # ✅ Détection client locale depuis ListeClients.csv (seulement si non déjà présent)
-        try:
-            filters = enriched_json.get("filters", {})
-            if "client" not in filters:
-                detected_client, score, _ = extract_client_name_from_csv(user_query)
-                if detected_client:
-                    filters["client"] = detected_client
-                    enriched_json["filters"] = filters  # met à jour l'objet original
-        except Exception as e:
-            print(f"[⚠️] Erreur détection client locale (CSV): {e}")
+        if "date" not in filters and any(w in query_upper for w in ["TICKET", "RÉCENT", "RÉCENTS", "RECENT"]):
+            six_months_ago = int(time()) - 60*60*24*180
+            filters["date"] = {"gte": six_months_ago}
+            enriched_json["filters"] = filters
 
+        if "client" not in filters:
+            detected_client, score, _ = extract_client_name_from_csv(user_query)
+            if detected_client:
+                filters["client"] = detected_client
+                enriched_json["filters"] = filters
+
+        print("[🧠 GPT - Query enrichie]", json.dumps(enriched_json, indent=2))
         return enriched_json
-
     
     def _load_clients(self, clients_file: str) -> Dict[str, Dict[str, Any]]:
         """
@@ -568,7 +581,7 @@ class QdrantSystem:
             "content": content,
             "sources": ", ".join(collections_used)
         }
-    def process_query(self, query, client_name=None, erp=None, recent_only=True, limit=5, format_type="Summary"):
+    def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary"):
         """
         Traite une requête utilisateur et renvoie les résultats formatés.
         """
@@ -576,7 +589,7 @@ class QdrantSystem:
         USE_EMBEDDING = os.getenv("USE_EMBEDDING", "true").lower() == "true"
 
         enriched_query = self.enrich_query_with_openai(query)
-
+        print(enriched_query)
         # Collections à rechercher
         collections = enriched_query.get("collections", self.get_prioritized_collections(client_name, erp))
 
