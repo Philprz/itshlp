@@ -228,14 +228,14 @@ class QdrantSystem:
 
         search_filter = Filter(must=filter_conditions) if filter_conditions else None
 
-        search_result = self.client.scroll(
-            collection_name=self.collections[collection_name],
+        results, _ = self.client.scroll(
+    collection_name=collection_name,
             scroll_filter=search_filter,
             limit=limit,
             with_payload=True
         )
 
-        return [hit.payload for hit in search_result[0]]
+        return [hit.payload for hit in results]
     def search_in_collection(self, collection_name: str, query: str, client_name: str = None, recent_only: bool = False, limit: int = 5, filters: Filter = None):
         """
         Effectue une recherche dans une collection avec vectorisation et filtres.
