@@ -102,7 +102,7 @@ class QdrantSystem:
         self.formats = FORMATS
     
     def enrich_query_with_openai(self, user_query):
-        response = openai_client.ChatCompletion.create(
+        response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
