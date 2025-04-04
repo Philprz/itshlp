@@ -218,7 +218,7 @@ class QdrantSystem:
             )
 
         if recent_only:
-            six_months_ago = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
+            six_months_ago = int((datetime.now() - timedelta(days=180)).timestamp())
             filter_conditions.append(
                 FieldCondition(
                     key="created",
