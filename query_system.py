@@ -236,6 +236,7 @@ class QdrantSystem:
         )
 
         return [hit.payload for hit in results]
+
     def search_in_collection(self, collection_name: str, query: str, client_name: str = None, recent_only: bool = False, limit: int = 5, filters: Filter = None):
         """
         Effectue une recherche dans une collection avec vectorisation et filtres.
@@ -249,7 +250,7 @@ class QdrantSystem:
             filters: Filtre Qdrant (déjà construit via enrich_query_with_openai)
 
         Returns:
-            Liste des documents pertinents (payloads)
+            Liste des documents pertinents (payloads) avec leurs scores
         """
         embedding_response = openai_client.embeddings.create(
             input=query,
@@ -265,7 +266,7 @@ class QdrantSystem:
             with_payload=True
         )
 
-        return [hit.payload for hit in results]
+        return [(hit.payload, hit.score) for hit in results]
 
     def get_client_erp(self, client_name: str) -> str:
         """
@@ -348,7 +349,32 @@ class QdrantSystem:
             return date >= six_months_ago
         except (ValueError, TypeError):
             return False
-    
+    def format_ticket_payload(self, payload: dict, score: float = None) -> dict:
+        """
+        Formate un payload de ticket en objet enrichi avec score, couleurs, lien, etc.
+        """
+        def get_score_color(score):
+            if score is None:
+                return "gray"
+            if score >= 0.80:
+                return "green"
+            elif score >= 0.50:
+                return "orange"
+            else:
+                return "red"
+
+        return {
+            "client": payload.get("client", "N/A"),
+            "source": payload.get("source_type", "N/A"),
+            "summary": payload.get("summary", payload.get("description", "")),
+            "created": payload.get("created", "N/A"),
+            "updated": payload.get("updated", "N/A"),
+            "assignee": payload.get("assignee", "N/A"),
+            "url": payload.get("url", None),
+            "score": round(score, 4) if score else None,
+            "color": get_score_color(score)
+        }
+
     def format_response(self, content: Dict[str, Any], format_type: str = "Summary") -> str:
         """
         Formate la réponse selon le format demandé
@@ -649,30 +675,34 @@ class QdrantSystem:
                         limit=limit,
                         filters=filters
                     )
+                    all_results.extend([
+                        self.format_ticket_payload(payload, score)
+                        for payload, score in results
+                    ])
                 else:
-                    results = self.simple_filter_search(
+                    raw_results = self.simple_filter_search(
                         collection_name=collection_name,
                         client_name=client_name,
                         recent_only=recent_only,
                         limit=limit
                     )
+                    all_results.extend([
+                        self.format_ticket_payload(payload)
+                        for payload in raw_results
+                    ])
 
-                all_results.extend(results)
                 if len(all_results) >= limit:
                     break
             except Exception as e:
                 print(f"Erreur dans la collection {collection_name}: {str(e)}")
 
-        if not all_results:
-            return {
-                "format": format_type,
-                "content": ["Aucun résultat trouvé pour cette requête."],
-                "sources": ", ".join(collections)
-            }
+        # 🔹 Tri par date descendante si possible
+        all_results.sort(key=lambda r: r.get("created", ""), reverse=True)
 
+        # 🔹 Nouveau retour formaté
         return {
             "format": format_type,
-            "content": [self.format_response(r, format_type) for r in all_results[:limit]],
+            "content": all_results[:limit],
             "sources": ", ".join(collections)
         }
 

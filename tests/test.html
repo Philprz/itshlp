@@ -41,33 +41,50 @@
     </div>
 
     <script>
-        document.getElementById('searchBtn').addEventListener('click', async () => {
-            const query = document.getElementById('query').value;
-            const collection = document.getElementById('collection').value;
-            const format = document.getElementById('format').value;
-
-            const output = document.getElementById('output');
-            output.textContent = 'Chargement...';
-
-            try {
-                const response = await fetch('https://itshlp.onrender.com/api/search', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        query: query,
-                        erp: collection,
-                        format: format,
-                        recentOnly: false,
-                        limit: 5
-                    }),
-                });
-
-                const data = await response.json();
-                output.textContent = JSON.stringify(data, null, 2);
-            } catch (error) {
-                output.textContent = `Erreur: ${error.message}`;
+        document.getElementById('testBtn').addEventListener('click', async () => {
+          const output = document.getElementById('output');
+          output.textContent = 'Chargement...';
+      
+          try {
+            const response = await fetch('https://itshlp.onrender.com/api/search', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                query: "Problèmes de connexion",
+                limit: 10,
+                format: "Detail"
+              }),
+            });
+      
+            const data = await response.json();
+      
+            if (!Array.isArray(data.content)) {
+              output.textContent = "Format inattendu : " + JSON.stringify(data);
+              return;
             }
+      
+            const htmlResults = data.content.map(item => {
+              const color = item.color === "green" ? "🟢" : item.color === "orange" ? "🟠" : item.color === "red" ? "🔴" : "⚪";
+              const link = item.url ? `<a href="${item.url}" target="_blank">🔗 Ouvrir</a>` : "Lien non disponible";
+              return `
+                <div style="margin-bottom:1em; border-bottom:1px solid #ccc; padding-bottom:1em;">
+                  <strong>${color} ${item.source}</strong> - Client : <em>${item.client}</em><br>
+                  🕒 Créé le : ${item.created} | 🛠️ MAJ : ${item.updated}<br>
+                  👷 Assigné à : ${item.assignee}<br>
+                  📄 <strong>${item.summary}</strong><br>
+                  ${link}<br>
+                  <small>Score : ${item.score}</small>
+                </div>
+              `;
+            }).join("");
+      
+            output.innerHTML = htmlResults;
+          } catch (error) {
+            output.textContent = `Erreur: ${error.message}`;
+          }
         });
-    </script>
+      </script>
 </body>
 </html>
