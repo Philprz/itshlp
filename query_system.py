@@ -347,6 +347,15 @@ class QdrantSystem:
         elif format_type == "Guide":
             # Instructions étape par étape
             return self._format_guide(content)
+    @staticmethod
+    def convert_to_timestamp(date_str):
+        if isinstance(date_str, (int, float)):
+            return date_str
+        try:
+            return int(datetime.fromisoformat(date_str.replace("Z", "+00:00")).timestamp())
+        except Exception:
+            return None  # ou raise une erreur selon ton choix
+
     def apply_filters(self, filters: dict) -> Filter:
         """
         Transforme un dictionnaire de filtres en objet Filter pour Qdrant
@@ -374,15 +383,14 @@ class QdrantSystem:
             if isinstance(date_filter, dict):
                 gte = date_filter.get("gte")
                 lte = date_filter.get("lte")
-                if gte or lte:
-                    range_filter = {}
-                    if gte:
-                        range_filter["gte"] = gte
-                    if lte:
-                        range_filter["lte"] = lte
-                    conditions.append(
-                        FieldCondition(key="created", range=Range(**range_filter))
-                    )
+                range_filter = {}
+                if gte:
+                    range_filter["gte"] = QdrantSystem.convert_to_timestamp(gte)
+                if lte:
+                    range_filter["lte"] = QdrantSystem.convert_to_timestamp(lte)
+                if range_filter:  # Only add the condition if we have date filters
+                    conditions.append(FieldCondition(key="created", range=Range(**range_filter)))
+
 
         return Filter(must=conditions) if conditions else None
 
