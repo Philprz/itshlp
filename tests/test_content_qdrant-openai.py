@@ -78,7 +78,7 @@ def test_collection_query(collection_name, query, client_name=None, limit=3):
 
 # Exemples de tests
 if __name__ == "__main__":
-    test_collection_query("JIRA", "problème connexion", "AZERGO")
+    test_collection_query("JIRA", "Tickets", "RONDOT")
     test_collection_query("CONFLUENCE", "documentation ERP")
     test_collection_query("ZENDESK", "ticket incident", "AZERGO")
     test_collection_query("SAP", "module finance")

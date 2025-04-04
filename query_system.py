@@ -11,6 +11,8 @@ import csv
 import os
 import re   
 import json
+import unicodedata
+from fuzzywuzzy import fuzz 
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from openai import OpenAI
@@ -35,6 +37,53 @@ COLLECTIONS = ["JIRA", "CONFLUENCE", "ZENDESK", "NETSUITE", "NETSUITE_DUMMIES", 
 
 # Définition des formats de réponse
 FORMATS = ["Summary", "Detail", "Guide"]
+
+def normalize_string(text: str) -> str:
+    if not text:
+        return ""
+    text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8')
+    return text.upper().strip()
+
+def extract_client_name_from_csv(query: str, csv_path: str = "ListeClients.csv"):
+    """
+    Détecte un nom de client dans une requête utilisateur, basé sur ListeClients.csv
+    Retourne: (nom_client, score, source)
+    """
+    if not query or len(query.strip()) < 2:
+        return None, 0.0, {}
+
+    query_normalized = normalize_string(query)
+    best_match = None
+    best_score = 0
+    best_source = None
+
+    try:
+        with open(csv_path, mode='r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            for row in reader:
+                client_name = row.get("Client", "").strip()
+                if not client_name:
+                    continue
+
+                # Match exact
+                if normalize_string(client_name) in query_normalized:
+                    return client_name, 100.0, {"source": client_name}
+
+                # Match flou
+                score = fuzz.ratio(query_normalized, normalize_string(client_name))
+                if score > best_score:
+                    best_score = score
+                    best_match = client_name
+                    best_source = client_name
+
+        if best_match and best_score >= 80:
+            return best_match, best_score, {"source": best_source}
+
+    except Exception as e:
+        print(f"[⚠️] Erreur lors de la détection client depuis CSV: {e}")
+
+    return None, 0.0, {}
+
 def extract_json(text: str) -> str:
     match = re.search(r"\{[\s\S]*\}", text)
     return match.group(0) if match else text
@@ -51,9 +100,9 @@ class QdrantSystem:
         self.clients = self._load_clients(clients_file)
         self.collections = COLLECTIONS
         self.formats = FORMATS
-    #vérifier si cela a changé ?    
+    
     def enrich_query_with_openai(self, user_query):
-        response = openai_client.chat.completions.create(
+        response = openai_client.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -62,15 +111,27 @@ class QdrantSystem:
             temperature=0.0,
             max_tokens=300
         )
-        
+
         enriched_query = response.choices[0].message.content.strip()
-        enriched_query = extract_json(enriched_query)
+
         try:
             enriched_json = json.loads(enriched_query)
         except json.JSONDecodeError as e:
             raise ValueError(f"Réponse GPT non conforme : {enriched_query}") from e
 
+        # ✅ Détection client locale depuis ListeClients.csv (seulement si non déjà présent)
+        try:
+            filters = enriched_json.get("filters", {})
+            if "client" not in filters:
+                detected_client, score, _ = extract_client_name_from_csv(user_query)
+                if detected_client:
+                    filters["client"] = detected_client
+                    enriched_json["filters"] = filters  # met à jour l'objet original
+        except Exception as e:
+            print(f"[⚠️] Erreur détection client locale (CSV): {e}")
+
         return enriched_json
+
     
     def _load_clients(self, clients_file: str) -> Dict[str, Dict[str, Any]]:
         """
