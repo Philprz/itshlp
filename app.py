@@ -42,9 +42,20 @@ class SearchRequest(BaseModel):
     recentOnly: Optional[bool] = False
     limit: Optional[int] = 5
 
+class TicketPayload(BaseModel):
+    client: str
+    source: str
+    summary: Optional[str]
+    created: Optional[int]
+    updated: Optional[int]
+    assignee: Optional[str]
+    url: Optional[str]
+    score: Optional[float]
+    color: Optional[str]
+
 class SearchResponse(BaseModel):
     format: str
-    content: List[str]
+    content: List[TicketPayload]
     sources: str
 
 @app.get("/")
