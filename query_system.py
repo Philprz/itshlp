@@ -149,7 +149,7 @@ class QdrantSystem:
                 {"role": "user", "content": user_query}
             ],
             temperature=0.0,
-            max_tokens=300
+            max_tokens=500
         )
 
         enriched_query = response.choices[0].message.content.strip()
@@ -761,7 +761,7 @@ class QdrantSystem:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=500
+                max_tokens=2000
             )
             guide_text = response.choices[0].message.content.strip()
             return {
