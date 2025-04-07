@@ -365,6 +365,7 @@ class QdrantSystem:
             return date >= six_months_ago
         except (ValueError, TypeError):
             return False
+
     def format_ticket_payload(self, payload: dict, score: float = None, format_type: str = "Detail") -> dict:
         def get_score_color(score):
             if score is None:
@@ -376,20 +377,29 @@ class QdrantSystem:
             else:
                 return "red"
 
+        def format_timestamp(ts):
+            try:
+                if isinstance(ts, (int, float)):
+                    return datetime.fromtimestamp(ts).strftime('%d/%m/%Y')
+                elif isinstance(ts, str) and ts.isdigit():
+                    return datetime.fromtimestamp(int(ts)).strftime('%d/%m/%Y')
+                return ts
+            except Exception:
+                return ts
+
         base = {
             "client": payload.get("client", "N/A"),
             "source": payload.get("source_type", "N/A"),
             "summary": payload.get("summary", payload.get("description", "")),
-            "created": payload.get("created", "N/A"),
-            "updated": payload.get("updated", "N/A"),
+            "created": format_timestamp(payload.get("created", "N/A")),
+            "updated": format_timestamp(payload.get("updated", "N/A")),
             "assignee": payload.get("assignee", "N/A"),
             "url": payload.get("url", None),
-            "score": round(score, 4) if score else None,
+            "score": round(score, 4) if score is not None else None,
             "color": get_score_color(score),
         }
 
         if format_type == "Guide":
-            # Ajouter un champ "content" enrichi avec steps potentiels
             content_parts = []
             for key in ["summary", "description", "content", "text", "comments"]:
                 val = payload.get(key)
@@ -518,7 +528,9 @@ class QdrantSystem:
         # Informations supplémentaires
         if "comments" in content and content["comments"]:
             detail += f"### Commentaires\n{content['comments']}\n\n"
-        
+        # Ajouter le score
+        if "score" in content:
+            detail += f"Score de similarité : {content['score']}\n\n"
         # Métadonnées
         metadata = []
         if "created" in content:
@@ -669,80 +681,102 @@ class QdrantSystem:
         """
         Traite une requête utilisateur et renvoie les résultats formatés.
         """
-        # Chargement du paramètre global d'embedding depuis .env
         USE_EMBEDDING = os.getenv("USE_EMBEDDING", "true").lower() == "true"
-
         enriched_query = self.enrich_query_with_openai(query)
-        print(enriched_query)
-        # Collections à rechercher
+
         collections = enriched_query.get("collections")
         if not collections:
             collections = self.get_prioritized_collections(client_name, erp)
 
-        # Filtres Qdrant construits à partir de la réponse enrichie
         filters = self.apply_filters(enriched_query.get("filters", {}))
-
-        # Limite de résultats à retourner
         limit = enriched_query.get("limit", limit)
-
-        # Priorité de l'embedding (prend celui de l'enrichissement s'il existe, sinon celui du .env)
         use_embedding = enriched_query.get("use_embedding", USE_EMBEDDING)
 
         all_results = []
 
         for collection_name in collections:
             try:
+                remaining = limit - len(all_results)
+                if remaining <= 0:
+                    break
+
                 if use_embedding:
                     results = self.search_in_collection(
                         collection_name=collection_name,
                         query=query,
                         client_name=client_name,
                         recent_only=recent_only,
-                        limit=limit,
+                        limit=remaining,
                         filters=filters
                     )
-                    if format_type == "Detail":
-                        all_results.extend([
-                            self.format_ticket_payload(payload, score, format_type)
-                            for payload, score in results
-                        ])
-
-                        # 🔹 Tri par date descendante
-                        all_results.sort(key=lambda r: r.get("created", ""), reverse=True)
-
-                    else:
-                        all_results.extend([
-                            self._format_summary(payload)  # ou juste payload["summary"]
-                            for payload, score in results
-                            if "summary" in payload
-                        ])
+                    all_results.extend([
+                        self.format_ticket_payload(payload, score, format_type)
+                        for payload, score in results
+                    ])
                 else:
                     raw_results = self.simple_filter_search(
                         collection_name=collection_name,
-                        filters=filters,  # priorité à la query enrichie
+                        filters=filters,
                         client_name=client_name,
                         recent_only=recent_only,
-                        limit=limit
+                        limit=remaining
                     )
                     all_results.extend([
-                        self.format_ticket_payload(payload)
+                        self.format_ticket_payload(payload, format_type=format_type)
                         for payload in raw_results
                     ])
 
-                if len(all_results) >= limit:
-                    break
             except Exception as e:
                 print(f"Erreur dans la collection {collection_name}: {str(e)}")
 
-        # 🔹 Tri par date descendante si possible
         all_results.sort(key=lambda r: r.get("created", ""), reverse=True)
 
-        # 🔹 Nouveau retour formaté
-        return {
-            "format": format_type,
-            "content": all_results[:limit],
-            "sources": ", ".join(collections)
-        }
+        if format_type == "Summary":
+            joined_summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
+            prompt = f"Voici une liste de tickets utilisateurs concernant : {query}\n\n{joined_summaries}\n\nFais-en un résumé clair et concis."
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Tu es un assistant expert en synthèse de tickets clients."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=300
+            )
+            summary_text = response.choices[0].message.content.strip()
+            return {
+                "format": format_type,
+                "content": [summary_text],
+                "sources": ", ".join(collections)
+            }
+
+        elif format_type == "Guide":
+            guide_input = "\n".join(r.get("summary", "") + "\n" + r.get("content", "") for r in all_results[:limit] if "content" in r)
+            prompt = f"Voici des extraits de tickets. Rédige un guide pratique en étapes pour résoudre le problème évoqué :\n\n{guide_input}"
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Tu es un assistant qui transforme des contenus de tickets en guide étape par étape."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=500
+            )
+            guide_text = response.choices[0].message.content.strip()
+            return {
+                "format": format_type,
+                "content": [guide_text],
+                "sources": ", ".join(collections)
+            }
+
+        else:  # Detail
+            formatted_results = [self.format_response(r, format_type) for r in all_results[:limit]]
+            return {
+                "format": format_type,
+                "content": formatted_results,
+                "sources": ", ".join(collections)
+            }
+
 
 # Fonction principale pour tester le système
 def main():
