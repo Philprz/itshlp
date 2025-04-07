@@ -8,7 +8,7 @@ Ce programme expose une API REST pour interroger les collections Qdrant
 
 import os
 import traceback
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Any   
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -56,7 +56,7 @@ class TicketPayload(BaseModel):
 
 class SearchResponse(BaseModel):
     format: str
-    content: List[TicketPayload]
+    content: Any
     sources: str
 
 class SummaryResponse(BaseModel):

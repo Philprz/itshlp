@@ -1,134 +1,199 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>Test API Qdrant IT SPIRIT</title>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        select, input, button { padding: 10px; margin: 10px 0; width: 100%; }
-        pre { background: #f0f0f0; padding: 10px; border-radius: 5px; }
-        .result-block { margin-bottom:1em; border-bottom:1px solid #ccc; padding-bottom:1em; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Test API Qdrant IT SPIRIT</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    select, input, button { padding: 10px; margin: 10px 0; width: 100%; }
+    pre { background: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    .result-block { margin-bottom:1em; border-bottom:1px solid #ccc; padding-bottom:1em; }
+    h3 {
+        margin-top: 1em;
+        font-size: 1.1em;
+        color: #333;
+        }
+
+        .result-block {
+        background: #fafafa;
+        border-left: 4px solid #007acc;
+        padding: 10px;
+        margin-bottom: 1em;
+        font-size: 0.95em;
+        line-height: 1.5em;
+        }
+
+        .result-block p {
+        white-space: pre-wrap;
+        }
+
+  </style>
 </head>
 <body>
-    <h1>Test API Qdrant IT SPIRIT</h1>
+  <h1>Test API Qdrant IT SPIRIT</h1>
 
-    <label for="query">Requête :</label>
-    <input type="text" id="query" placeholder="Entrez votre requête">
+  <label for="query">Requête :</label>
+  <input type="text" id="query" placeholder="Entrez votre requête">
 
-    <label for="client">Client :</label>
-    <select id="client">
-        <option value="">-- Aucun --</option>
-    </select>
+  <label for="client">Client :</label>
+  <select id="client">
+    <option value="">-- Aucun --</option>
+  </select>
 
-    <label for="erp">ERP :</label>
-    <select id="erp">
-        <option value="">-- Aucun --</option>
-        <option value="SAP">SAP</option>
-        <option value="NetSuite">NetSuite</option>
-    </select>
+  <label for="erp">ERP :</label>
+  <select id="erp">
+    <option value="">-- Aucun --</option>
+    <option value="SAP">SAP</option>
+    <option value="NetSuite">NetSuite</option>
+  </select>
 
-    <label for="format">Format :</label>
-    <select id="format">
-        <option value="Summary">Summary</option>
-        <option value="Detail">Detail</option>
-        <option value="Guide">Guide</option>
-    </select>
+  <label for="format">Format :</label>
+  <select id="format">
+    <option value="Summary">Summary</option>
+    <option value="Detail">Detail</option>
+    <option value="Guide">Guide</option>
+  </select>
 
-    <label for="limit">Nombre de résultats :</label>
-    <input type="number" id="limit" value="10">
+  <label for="limit">Nombre de résultats :</label>
+  <input type="number" id="limit" value="10">
 
-    <button id="searchBtn">Rechercher</button>
+  <button id="searchBtn">Rechercher</button>
 
-    <div id="result">
-        <h2>Résultats</h2>
-        <pre id="output">Les résultats apparaîtront ici...</pre>
-    </div>
+  <div id="result">
+    <h2>Résultats</h2>
+    <pre id="output">Les résultats apparaîtront ici...</pre>
+  </div>
 
-    <script>
+  <script>
+    const BASE_URL = "https://itshlp.onrender.com";
+
     async function loadClients() {
-        try {
-            const response = await fetch("/api/clients");
-            const data = await response.json();
-            const select = document.getElementById("client");
-            data.clients.forEach(client => {
-                const opt = document.createElement("option");
-                opt.value = client;
-                opt.textContent = client;
-                select.appendChild(opt);
-            });
-        } catch (e) {
-            console.error("Erreur lors du chargement des clients", e);
+      try {
+        const response = await fetch(`${BASE_URL}/api/clients`);
+        const data = await response.json();
+        const select = document.getElementById("client");
+
+        if (!select) {
+          console.warn("⚠️ Élément <select id='client'> non trouvé !");
+          return;
         }
+
+        if (data.clients && Array.isArray(data.clients)) {
+          data.clients.forEach(client => {
+            const opt = document.createElement("option");
+            opt.value = client;
+            opt.textContent = client;
+            select.appendChild(opt);
+          });
+          console.log(`[✅] ${data.clients.length} clients chargés`);
+        } else {
+          console.warn("⚠️ Données clients mal formatées :", data);
+        }
+      } catch (e) {
+        console.error("❌ Erreur lors du chargement des clients", e);
+      }
     }
 
     document.getElementById('searchBtn').addEventListener('click', async () => {
-        const output = document.getElementById('output');
-        output.textContent = 'Chargement...';
+      const output = document.getElementById('output');
+      output.innerHTML = "";
 
-        const query = document.getElementById('query').value;
-        const client = document.getElementById('client').value;
-        const erp = document.getElementById('erp').value;
-        const format = document.getElementById('format').value;
-        const limit = parseInt(document.getElementById('limit').value);
+      const query = document.getElementById('query').value;
+      const client = document.getElementById('client').value;
+      const erp = document.getElementById('erp').value;
+      const format = document.getElementById('format').value;
+      const limit = parseInt(document.getElementById('limit').value);
 
-        try {
-            const response = await fetch('/api/search', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    query: query,
-                    client: client || undefined,
-                    erp: erp || undefined,
-                    format: format,
-                    limit: limit
-                })
-            });
+      const payload = {
+        query: query,
+        client: client !== "" ? client : undefined,
+        erp: erp !== "" ? erp : undefined,
+        format: format,
+        limit: limit
+      };
 
-            const data = await response.json();
-            console.log("[DEBUG] Réponse API:", data);
+      const baseBlock = document.createElement("div");
+      baseBlock.className = "result-block";
+      baseBlock.innerHTML = `
+        <strong>📤 Requête envoyée à l'API :</strong><br>
+        <pre>${JSON.stringify(payload, null, 2)}</pre>
+        <em>En attente de la réponse...</em>
+      `;
+      output.appendChild(baseBlock);
 
-            if (!data || !data.content) {
-                output.textContent = "Aucun contenu reçu.";
-                return;
-            }
+      try {
+        const response = await fetch(`${BASE_URL}/api/search`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload)
+        });
 
-            if (Array.isArray(data.content) && typeof data.content[0] === 'string') {
-                output.innerHTML = data.content.map((item, i) => `
-                    <div class="result-block">
-                        <strong>Résultat ${i + 1}</strong><br>
-                        <p>${item.replace(/\n/g, '<br>')}</p>
-                    </div>
-                `).join('');
-                return;
-            }
+        const data = await response.json();
+        console.log("[DEBUG] Réponse API:", data);
 
-            const htmlResults = data.content.map(item => {
-                const color = item.color === "green" ? "🟢" : item.color === "orange" ? "🟠" : item.color === "red" ? "🔴" : "⚪";
-                const link = item.url ? `<a href="${item.url}" target="_blank">🔗 Ouvrir</a>` : "Lien non disponible";
-                return `
-                    <div class="result-block">
-                        <strong>${color} ${item.source || 'Source inconnue'}</strong> - Client : <em>${item.client || 'Non défini'}</em><br>
-                        🕒 Créé le : ${item.created || 'N/A'} | 🛠️ MAJ : ${item.updated || 'N/A'}<br>
-                        👷 Assigné à : ${item.assignee || 'N/A'}<br>
-                        📄 <strong>${item.summary || 'Pas de résumé'}</strong><br>
-                        ${link}<br>
-                        <small>Score : ${item.score || 'N/A'}</small>
-                    </div>
-                `;
-            }).join("");
-
-            output.innerHTML = htmlResults;
-
-        } catch (error) {
-            console.error("[Erreur]", error);
-            output.textContent = `Erreur : ${error.message}`;
+        if (!data || !data.content) {
+          output.insertAdjacentHTML("beforeend", `<p>⚠️ Aucun contenu reçu.</p>`);
+          return;
         }
+
+        if (format === "Summary") {
+          const html = data.content.map((text, i) => `
+            <div class="result-block">
+              <h3>📝 Résumé ${i + 1}</h3>
+              <p>${text.replace(/\n/g, "<br>")}</p>
+            </div>
+          `).join('');
+          output.insertAdjacentHTML("beforeend", html);
+          return;
+        }
+
+        if (format === "Guide") {
+            const guideHtml = Array.isArray(data.content)
+                ? data.content.map((text, i) => `
+                    <div class="result-block">
+                        <h3>🛠️ Guide ${i + 1}</h3>
+                        <p>${text.replace(/\n/g, "<br>")}</p>
+                    </div>
+                `).join('')
+                : `
+                <div class="result-block">
+                    <h3>🛠️ Guide</h3>
+                    <p>${data.content.replace(/\n/g, "<br>")}</p>
+                </div>
+                `;
+            output.insertAdjacentHTML("beforeend", guideHtml);
+            return;
+        }
+
+        if (format === "Detail") {
+            const detailHtml = Array.isArray(data.content)
+                ? data.content.map((text, i) => `
+                    <div class="result-block">
+                    <h3>📋 Détail ${i + 1}</h3>
+                    <p>${text.replace(/\n/g, "<br>")}</p>
+                    </div>
+                `).join('')
+                : `
+                <div class="result-block">
+                    <h3>📋 Détail</h3>
+                    <p>${data.content.replace(/\n/g, "<br>")}</p>
+                </div>
+                `;
+            output.insertAdjacentHTML("beforeend", detailHtml);
+            return;
+            }
+
+        output.insertAdjacentHTML("beforeend", `<p>⚠️ Format de réponse non reconnu.</p>`);
+
+      } catch (error) {
+        console.error("[Erreur]", error);
+        output.insertAdjacentHTML("beforeend", `<p>❌ Erreur : ${error.message}</p>`);
+      }
     });
 
-    window.onload = loadClients;
-    </script>
+    document.addEventListener("DOMContentLoaded", loadClients);
+  </script>
 </body>
 </html>
