@@ -677,7 +677,8 @@ class QdrantSystem:
             "content": content,
             "sources": ", ".join(collections_used)
         }
-    def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary"):
+    def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary", raw=False):
+    
         """
         Traite une requête utilisateur et renvoie les résultats formatés.
         """
@@ -770,12 +771,19 @@ class QdrantSystem:
             }
 
         else:  # Detail
-            formatted_results = [self.format_response(r, format_type) for r in all_results[:limit]]
-            return {
-                "format": format_type,
-                "content": formatted_results,
-                "sources": ", ".join(collections)
-            }
+            if raw:
+                return {
+                    "format": format_type,
+                    "content": all_results[:limit],  # 🔄 payloads enrichis (non formatés)
+                    "sources": ", ".join(collections)
+                }
+
+                formatted_results = [self.format_response(r, format_type) for r in all_results[:limit]]
+                return {
+                    "format": format_type,
+                    "content": formatted_results,
+                    "sources": ", ".join(collections)
+                }
 
 
 # Fonction principale pour tester le système

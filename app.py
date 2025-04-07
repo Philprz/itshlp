@@ -41,8 +41,8 @@ class SearchRequest(BaseModel):
     erp: Optional[str] = None
     format: Optional[str] = "Summary"
     recentOnly: Optional[bool] = False
-    limit: Optional[int] = 5
-
+    limit: Optional[int] = 10
+    raw: Optional[bool] = False
 class TicketPayload(BaseModel):
     client: str
     source: str
@@ -87,7 +87,8 @@ async def search(request: SearchRequest):
             erp=request.erp,
             recent_only=request.recentOnly,
             limit=request.limit,
-            format_type=request.format
+            format_type=request.format,
+            raw=request.raw
         )
 
         print(f"Résultat: {result}")
