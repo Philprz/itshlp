@@ -8,9 +8,10 @@ Ce programme expose une API REST pour interroger les collections Qdrant
 
 import os
 import traceback
-from typing import List, Optional
-from fastapi import FastAPI, HTTPException
+from typing import List, Optional, Union
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from main import QdrantSystem
 
@@ -58,27 +59,26 @@ class SearchResponse(BaseModel):
     content: List[TicketPayload]
     sources: str
 
+class SummaryResponse(BaseModel):
+    format: str
+    content: List[str]
+    sources: str
 @app.get("/")
 async def root():
     """Point de terminaison racine pour vérifier que l'API est en ligne"""
     return {"status": "online", "message": "API Qdrant d'IT SPIRIT opérationnelle"}
 
-@app.post("/api/search", response_model=SearchResponse)
+@app.post("/api/search", response_model=Union[SearchResponse, SummaryResponse])
 async def search(request: SearchRequest):
     """Point de terminaison pour effectuer une recherche dans les collections Qdrant"""
     try:
-        # Vérification des paramètres requis
-        if not request.query:
-            raise HTTPException(status_code=400, detail="Le paramètre query est requis")
-
-        # Ajouter des logs pour le débogage
+        # Logs pour débogage
         print(f"Requête reçue: {request.query}")
         print(f"Client: {request.client}")
         print(f"ERP: {request.erp}")
         print(f"Format: {request.format}")
         print(f"Recent only: {request.recentOnly}")
         print(f"Limit: {request.limit}")
-
 
         # Traitement de la requête
         result = qdrant_system.process_query(
@@ -90,33 +90,28 @@ async def search(request: SearchRequest):
             format_type=request.format
         )
 
-        # Ajouter des logs pour le débogage
         print(f"Résultat: {result}")
 
-        # Extraction et formatage de la réponse
-        if isinstance(result, dict) and "content" in result and "sources" in result:
-            content = result.get("content", [])
-            sources = result.get("sources", "")
-            format_type = result.get("format", request.format)
-        else:
-            content = result if isinstance(result, list) else [str(result)]
-            sources = ""
-            format_type = request.format
+        # Adaptation dynamique du modèle de retour selon le format
+        format_type = result.get("format", request.format)
 
-        return {
-            "format": format_type,
-            "content": content,
-            "sources": sources
-        }
+        if format_type == "Summary":
+            return SummaryResponse(**result)
+        else:
+            return SearchResponse(**result)
 
     except Exception as e:
         print(f"Erreur lors du traitement de la requête: {str(e)}")
-        traceback.print_exc()  # Afficher la stack trace complète
-        return {
-            "format": "Error",
-            "content": [f"Une erreur s'est produite lors du traitement de votre requête: {str(e)}"],
-            "sources": ""
-        }
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "format": "Error",
+                "content": [f"Une erreur s'est produite lors du traitement de votre requête: {str(e)}"],
+                "sources": ""
+            }
+        )
+
 
 @app.get("/api/test")
 async def test():
