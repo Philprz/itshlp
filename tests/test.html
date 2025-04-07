@@ -62,6 +62,8 @@
   <div id="result">
     <h2>Résultats</h2>
     <pre id="output">Les résultats apparaîtront ici...</pre>
+    <p id="results-count" style="font-weight:bold; margin-top: 1em;"></p>
+
   </div>
 
   <script>
@@ -117,6 +119,7 @@
       baseBlock.innerHTML = `
         <strong>📤 Requête envoyée à l'API :</strong><br>
         <pre>${JSON.stringify(payload, null, 2)}</pre>
+        <p>🔢 Nombre demandé : ${limit}</p>
         <em>En attente de la réponse...</em>
       `;
       output.appendChild(baseBlock);
@@ -137,17 +140,60 @@
           output.insertAdjacentHTML("beforeend", `<p>⚠️ Aucun contenu reçu.</p>`);
           return;
         }
+        function renderMeta(meta) {
+            if (!meta) return "";
+
+            let html = `<div style="font-size: 0.9em; margin-top: 0.5em;">`;
+
+            if (meta.erp) {
+                html += `<p>🏷️ ERP détecté : <strong>${meta.erp}</strong></p>`;
+            }
+
+            if (meta.dateFilter?.gte) {
+                const date = new Date(meta.dateFilter.gte * 1000).toLocaleDateString();
+                html += `<p>⏱️ Filtre sur les tickets créés après : <strong>${date}</strong></p>`;
+            }
+
+            html += `</div>`;
+            return html;
+        }
 
         if (format === "Summary") {
-          const html = data.content.map((text, i) => `
-            <div class="result-block">
-              <h3>📝 Résumé ${i + 1}</h3>
-              <p>${text.replace(/\n/g, "<br>")}</p>
-            </div>
-          `).join('');
-          output.insertAdjacentHTML("beforeend", html);
-          return;
-        }
+            const summaryText = Array.isArray(data.content) ? data.content[0] : data.content;
+            const sources = (data.sources || "").split(",").map(s => s.trim());
+            const baseUrls = {
+                "JIRA": "https://jira.exemple.com/",
+                "ZENDESK": "https://zendesk.exemple.com/",
+                "CONFLUENCE": "https://confluence.exemple.com/"
+            };
+
+            const sourcesLinks = sources.map(src => {
+                const base = baseUrls[src.toUpperCase()];
+                return base ? `<a href="${base}" target="_blank">${src}</a>` : src;
+            }).join(', ');
+
+            let extraInfo = "";
+            if (data.meta) {
+                if (data.meta.erp) extraInfo += `<p>🏷️ ERP détecté : <strong>${data.meta.erp}</strong></p>`;
+                if (data.meta.dateFilter) {
+                const timestamp = data.meta.dateFilter.gte;
+                const date = new Date(timestamp * 1000).toLocaleDateString();
+                extraInfo += `<p>⏱️ Filtre sur les tickets créés après : <strong>${date}</strong></p>`;
+                }
+            }
+
+            const summaryHtml = `
+                <div class="result-block">
+                <h3>📝 Résumé global</h3>
+                <p>${summaryText.replace(/\n/g, "<br>")}</p>
+                <p>📁 Sources utilisées : ${sourcesLinks}</p>
+                ${extraInfo}
+                </div>
+            `;
+            output.insertAdjacentHTML("beforeend", summaryHtml);
+            document.getElementById("results-count").innerText = `🧮 Nombre de tickets résumés : ${limit}`;
+            return;
+            }
 
         if (format === "Guide") {
             const guideHtml = Array.isArray(data.content)
@@ -158,32 +204,43 @@
                     </div>
                 `).join('')
                 : `
-                <div class="result-block">
-                    <h3>🛠️ Guide</h3>
-                    <p>${data.content.replace(/\n/g, "<br>")}</p>
-                </div>
+                    <div class="result-block">
+                        <h3>🛠️ Guide</h3>
+                        <p>${data.content.replace(/\n/g, "<br>")}</p>
+                    </div>
                 `;
+
             output.insertAdjacentHTML("beforeend", guideHtml);
+            if (data.meta) output.insertAdjacentHTML("beforeend", renderMeta(data.meta));
+            document.getElementById("results-count").innerText = `🧮 Nombre de résultats retournés : ${Array.isArray(data.content) ? data.content.length : 1}`;
             return;
-        }
+            }
 
         if (format === "Detail") {
             const detailHtml = Array.isArray(data.content)
-                ? data.content.map((text, i) => `
+                ? data.content.map((entry, i) => {
+                    const text = typeof entry === "string" ? entry : JSON.stringify(entry, null, 2);
+                    const url = entry.url ? `<p>🔗 <a href="${entry.url}" target="_blank">Voir la source</a></p>` : "";
+                    return `
                     <div class="result-block">
-                    <h3>📋 Détail ${i + 1}</h3>
-                    <p>${text.replace(/\n/g, "<br>")}</p>
+                        <h3>📋 Détail ${i + 1}</h3>
+                        <p>${text.replace(/\n/g, "<br>")}</p>
+                        ${url}
                     </div>
-                `).join('')
+                    `;
+                }).join('')
                 : `
                 <div class="result-block">
                     <h3>📋 Détail</h3>
                     <p>${data.content.replace(/\n/g, "<br>")}</p>
                 </div>
                 `;
+
             output.insertAdjacentHTML("beforeend", detailHtml);
+            if (data.meta) output.insertAdjacentHTML("beforeend", renderMeta(data.meta));
+            document.getElementById("results-count").innerText = `🧮 Nombre de résultats retournés : ${Array.isArray(data.content) ? data.content.length : 1}`;
             return;
-            }
+        }
 
         output.insertAdjacentHTML("beforeend", `<p>⚠️ Format de réponse non reconnu.</p>`);
 

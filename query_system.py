@@ -684,12 +684,17 @@ class QdrantSystem:
         """
         USE_EMBEDDING = os.getenv("USE_EMBEDDING", "true").lower() == "true"
         enriched_query = self.enrich_query_with_openai(query)
+        # Correction : forcer la priorité du paramètre 'limit' reçu de l'utilisateur
+        if "limit" not in enriched_query or not enriched_query["limit"]:
+            enriched_query["limit"] = limit
 
         collections = enriched_query.get("collections")
         if not collections:
             collections = self.get_prioritized_collections(client_name, erp)
 
         filters = self.apply_filters(enriched_query.get("filters", {}))
+        filters_dict = enriched_query.get("filters", {})  # pour réutilisation plus tard
+
         limit = enriched_query.get("limit", limit)
         use_embedding = enriched_query.get("use_embedding", USE_EMBEDDING)
 
@@ -748,7 +753,11 @@ class QdrantSystem:
             return {
                 "format": format_type,
                 "content": [summary_text],
-                "sources": ", ".join(collections)
+                "sources": ", ".join(collections),
+                "meta": {
+                    "erp": filters_dict.get("erp"),
+                    "dateFilter": filters_dict.get("date")
+                }
             }
 
         elif format_type == "Guide":
@@ -765,11 +774,14 @@ class QdrantSystem:
             )
             guide_text = response.choices[0].message.content.strip()
             return {
-                "format": format_type,
-                "content": [guide_text],
-                "sources": ", ".join(collections)
+    "format": format_type,
+    "content": [guide_text],
+                "sources": ", ".join(collections),
+                "meta": {
+                    "erp": filters_dict.get("erp"),
+                    "dateFilter": filters_dict.get("date")
+                }
             }
-
         else:  # Detail
             if raw:
                 return {
@@ -779,11 +791,16 @@ class QdrantSystem:
                 }
 
             formatted_results = [self.format_response(r, format_type) for r in all_results[:limit]]
-            return {
-                "format": format_type,
-                "content": formatted_results,
-                "sources": ", ".join(collections)
+        return {
+    "format": format_type,
+    "content": formatted_results,
+    "sources": ", ".join(collections),
+                "meta": {
+                    "erp": filters_dict.get("erp"),
+                    "dateFilter": filters_dict.get("date")
+                }
             }
+
 
 
 
