@@ -778,12 +778,13 @@ class QdrantSystem:
                     "sources": ", ".join(collections)
                 }
 
-                formatted_results = [self.format_response(r, format_type) for r in all_results[:limit]]
-                return {
-                    "format": format_type,
-                    "content": formatted_results,
-                    "sources": ", ".join(collections)
-                }
+            formatted_results = [self.format_response(r, format_type) for r in all_results[:limit]]
+            return {
+                "format": format_type,
+                "content": formatted_results,
+                "sources": ", ".join(collections)
+            }
+
 
 
 # Fonction principale pour tester le système
