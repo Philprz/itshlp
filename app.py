@@ -111,6 +111,14 @@ async def search(request: SearchRequest):
                 "sources": ""
             }
         )
+@app.get("/api/clients")
+async def get_clients():
+    """Retourne la liste des clients depuis ListeClients.csv"""
+    try:
+        clients = list(qdrant_system.clients.keys())
+        return {"clients": sorted(clients)}
+    except Exception as e:
+        return {"clients": [], "error": str(e)}
 
 
 @app.get("/api/test")

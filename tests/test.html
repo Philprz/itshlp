@@ -1,111 +1,134 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Test API Qdrant IT SPIRIT</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
-    select, input, button { padding: 10px; margin: 10px 0; width: 100%; font-size: 16px; }
-    .result-card {
-      background: white;
-      border-left: 5px solid #ccc;
-      border-radius: 5px;
-      padding: 15px;
-      margin-bottom: 15px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    .green { border-color: green; }
-    .orange { border-color: orange; }
-    .red { border-color: red; }
-    .gray { border-color: gray; }
-    .result-meta { font-size: 14px; color: #555; }
-    pre { white-space: pre-wrap; word-wrap: break-word; }
-  </style>
+    <meta charset="UTF-8">
+    <title>Test API Qdrant IT SPIRIT</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        select, input, button { padding: 10px; margin: 10px 0; width: 100%; }
+        pre { background: #f0f0f0; padding: 10px; border-radius: 5px; }
+        .result-block { margin-bottom:1em; border-bottom:1px solid #ccc; padding-bottom:1em; }
+    </style>
 </head>
 <body>
-  <h1>Test API Qdrant IT SPIRIT</h1>
+    <h1>Test API Qdrant IT SPIRIT</h1>
 
-  <label>Requête :</label>
-  <input type="text" id="query" placeholder="Ex: Problèmes de connexion">
+    <label for="query">Requête :</label>
+    <input type="text" id="query" placeholder="Entrez votre requête">
 
-  <label>Client (optionnel) :</label>
-  <input type="text" id="client" placeholder="Nom du client">
+    <label for="client">Client :</label>
+    <select id="client">
+        <option value="">-- Aucun --</option>
+    </select>
 
-  <label>ERP (optionnel) :</label>
-  <select id="erp">
-    <option value="">Non spécifié</option>
-    <option value="SAP">SAP</option>
-    <option value="NetSuite">NetSuite</option>
-  </select>
+    <label for="erp">ERP :</label>
+    <select id="erp">
+        <option value="">-- Aucun --</option>
+        <option value="SAP">SAP</option>
+        <option value="NetSuite">NetSuite</option>
+    </select>
 
-  <label>Format :</label>
-  <select id="format">
-    <option value="Summary">Résumé</option>
-    <option value="Detail">Détail</option>
-    <option value="Guide">Guide</option>
-  </select>
+    <label for="format">Format :</label>
+    <select id="format">
+        <option value="Summary">Summary</option>
+        <option value="Detail">Detail</option>
+        <option value="Guide">Guide</option>
+    </select>
 
-  <label>Récents uniquement :</label>
-  <select id="recentOnly">
-    <option value="true">Oui</option>
-    <option value="false">Non</option>
-  </select>
+    <label for="limit">Nombre de résultats :</label>
+    <input type="number" id="limit" value="10">
 
-  <label>Nombre de résultats :</label>
-  <input type="number" id="limit" value="5" min="1" max="20">
+    <button id="searchBtn">Rechercher</button>
 
-  <button id="searchBtn">Rechercher</button>
+    <div id="result">
+        <h2>Résultats</h2>
+        <pre id="output">Les résultats apparaîtront ici...</pre>
+    </div>
 
-  <div id="result">
-    <h2>Résultats</h2>
-    <div id="output">Les résultats apparaîtront ici...</div>
-  </div>
-
-  <script>
-    document.getElementById('searchBtn').addEventListener('click', async () => {
-      const output = document.getElementById('output');
-      output.innerHTML = 'Chargement...';
-
-      const query = document.getElementById('query').value;
-      const client = document.getElementById('client').value;
-      const erp = document.getElementById('erp').value;
-      const format = document.getElementById('format').value;
-      const recentOnly = document.getElementById('recentOnly').value === "true";
-      const limit = parseInt(document.getElementById('limit').value);
-
-      try {
-        const response = await fetch('https://itshlp.onrender.com/api/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query, client, erp, format, recentOnly, limit })
-        });
-
-        const data = await response.json();
-
-        if (!Array.isArray(data.content)) {
-          output.innerHTML = "<pre>⚠️ Format inattendu : " + JSON.stringify(data, null, 2) + "</pre>";
-          return;
+    <script>
+    async function loadClients() {
+        try {
+            const response = await fetch("/api/clients");
+            const data = await response.json();
+            const select = document.getElementById("client");
+            data.clients.forEach(client => {
+                const opt = document.createElement("option");
+                opt.value = client;
+                opt.textContent = client;
+                select.appendChild(opt);
+            });
+        } catch (e) {
+            console.error("Erreur lors du chargement des clients", e);
         }
+    }
 
-        output.innerHTML = data.content.map(item => {
-          const color = item.color || 'gray';
-          return `
-            <div class="result-card ${color}">
-              <div class="result-meta">
-                <strong>${item.source || 'Source inconnue'}</strong> - Client : ${item.client || 'Inconnu'}<br>
-                🕒 Créé le : ${item.created || 'N/A'} | 🔄 MAJ : ${item.updated || 'N/A'}<br>
-                👷 Assigné à : ${item.assignee || 'Non assigné'}<br>
-                🔢 Score : ${item.score ?? 'N/A'}
-              </div>
-              <div><strong>Résumé :</strong> ${item.summary || '(aucun résumé)'}</div>
-              <div>${item.url ? `<a href="${item.url}" target="_blank">🔗 Lien</a>` : 'Pas de lien'}</div>
-            </div>
-          `;
-        }).join('');
-      } catch (error) {
-        output.innerHTML = `<pre>❌ Erreur : ${error.message}</pre>`;
-      }
+    document.getElementById('searchBtn').addEventListener('click', async () => {
+        const output = document.getElementById('output');
+        output.textContent = 'Chargement...';
+
+        const query = document.getElementById('query').value;
+        const client = document.getElementById('client').value;
+        const erp = document.getElementById('erp').value;
+        const format = document.getElementById('format').value;
+        const limit = parseInt(document.getElementById('limit').value);
+
+        try {
+            const response = await fetch('/api/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    query: query,
+                    client: client || undefined,
+                    erp: erp || undefined,
+                    format: format,
+                    limit: limit
+                })
+            });
+
+            const data = await response.json();
+            console.log("[DEBUG] Réponse API:", data);
+
+            if (!data || !data.content) {
+                output.textContent = "Aucun contenu reçu.";
+                return;
+            }
+
+            if (Array.isArray(data.content) && typeof data.content[0] === 'string') {
+                output.innerHTML = data.content.map((item, i) => `
+                    <div class="result-block">
+                        <strong>Résultat ${i + 1}</strong><br>
+                        <p>${item.replace(/\n/g, '<br>')}</p>
+                    </div>
+                `).join('');
+                return;
+            }
+
+            const htmlResults = data.content.map(item => {
+                const color = item.color === "green" ? "🟢" : item.color === "orange" ? "🟠" : item.color === "red" ? "🔴" : "⚪";
+                const link = item.url ? `<a href="${item.url}" target="_blank">🔗 Ouvrir</a>` : "Lien non disponible";
+                return `
+                    <div class="result-block">
+                        <strong>${color} ${item.source || 'Source inconnue'}</strong> - Client : <em>${item.client || 'Non défini'}</em><br>
+                        🕒 Créé le : ${item.created || 'N/A'} | 🛠️ MAJ : ${item.updated || 'N/A'}<br>
+                        👷 Assigné à : ${item.assignee || 'N/A'}<br>
+                        📄 <strong>${item.summary || 'Pas de résumé'}</strong><br>
+                        ${link}<br>
+                        <small>Score : ${item.score || 'N/A'}</small>
+                    </div>
+                `;
+            }).join("");
+
+            output.innerHTML = htmlResults;
+
+        } catch (error) {
+            console.error("[Erreur]", error);
+            output.textContent = `Erreur : ${error.message}`;
+        }
     });
-  </script>
+
+    window.onload = loadClients;
+    </script>
 </body>
 </html>
