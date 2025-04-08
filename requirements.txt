@@ -9,3 +9,5 @@ openai
 fuzzywuzzy
 python-Levenshtein
 redis
+sqlalchemy
+alembic
