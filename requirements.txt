@@ -8,4 +8,4 @@ python-multipart
 openai
 fuzzywuzzy
 python-Levenshtein
-
+redis
