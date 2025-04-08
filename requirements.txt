@@ -11,3 +11,4 @@ python-Levenshtein
 redis
 sqlalchemy
 alembic
+psycopg2
