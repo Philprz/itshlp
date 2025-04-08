@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from qdrant_client.http.models import FieldCondition, MatchValue, Range, Filter
 from qdrant_client import QdrantClient
 from time import time
+from cache_manager import CacheManager
 
 # Chargement des variables d'environnement
 load_dotenv()
@@ -131,6 +132,10 @@ class QdrantSystem:
         self.client = QdrantClient(
             url=os.getenv("QDRANT_URL"),
             api_key=os.getenv("QDRANT_API_KEY")
+        )
+        self.cache = CacheManager(
+            db_url=os.getenv("DATABASE_URL"),
+            redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0")
         )
     def enrich_query_with_openai(self, user_query):
         """
@@ -678,68 +683,88 @@ class QdrantSystem:
             "sources": ", ".join(collections_used)
         }
     def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary", raw=False):
-    
-        """
-        Traite une requête utilisateur et renvoie les résultats formatés.
-        """
         USE_EMBEDDING = os.getenv("USE_EMBEDDING", "true").lower() == "true"
+        
+        # Étape 1 : enrichissement de la requête
         enriched_query = self.enrich_query_with_openai(query)
-        # Correction : forcer la priorité du paramètre 'limit' reçu de l'utilisateur
-        if "limit" not in enriched_query or not enriched_query["limit"]:
-            enriched_query["limit"] = limit
 
-        collections = enriched_query.get("collections")
-        if not collections:
-            collections = self.get_prioritized_collections(client_name, erp)
+        # Étape 2 : génération de la clé unique de cache
+        cache_key = self.cache.compute_key(query, enriched_query.get("filters", {}), limit)
 
-        filters = self.apply_filters(enriched_query.get("filters", {}))
-        filters_dict = enriched_query.get("filters", {})  # pour réutilisation plus tard
+        # Étape 3 : tenter de récupérer les résultats bruts depuis le cache
+        all_results = self.cache.get_raw_results(cache_key)
 
-        limit = enriched_query.get("limit", limit)
-        use_embedding = enriched_query.get("use_embedding", USE_EMBEDDING)
+        if not all_results:
+            # Requête Qdrant si cache vide
+            collections = enriched_query.get("collections")
+            if not collections:
+                collections = self.get_prioritized_collections(client_name, erp)
 
-        all_results = []
+            filters = self.apply_filters(enriched_query.get("filters", {}))
+            filters_dict = enriched_query.get("filters", {})
 
-        for collection_name in collections:
-            try:
-                remaining = limit - len(all_results)
-                if remaining <= 0:
-                    break
+            limit = enriched_query.get("limit", limit)
+            use_embedding = enriched_query.get("use_embedding", USE_EMBEDDING)
 
-                if use_embedding:
-                    results = self.search_in_collection(
-                        collection_name=collection_name,
-                        query=query,
-                        client_name=client_name,
-                        recent_only=recent_only,
-                        limit=remaining,
-                        filters=filters
-                    )
-                    all_results.extend([
-                        self.format_ticket_payload(payload, score, format_type)
-                        for payload, score in results
-                    ])
-                else:
-                    raw_results = self.simple_filter_search(
-                        collection_name=collection_name,
-                        filters=filters,
-                        client_name=client_name,
-                        recent_only=recent_only,
-                        limit=remaining
-                    )
-                    all_results.extend([
-                        self.format_ticket_payload(payload, format_type=format_type)
-                        for payload in raw_results
-                    ])
+            all_results = []
+            for collection_name in collections:
+                try:
+                    remaining = limit - len(all_results)
+                    if remaining <= 0:
+                        break
 
-            except Exception as e:
-                print(f"Erreur dans la collection {collection_name}: {str(e)}")
+                    if use_embedding:
+                        results = self.search_in_collection(
+                            collection_name=collection_name,
+                            query=query,
+                            client_name=client_name,
+                            recent_only=recent_only,
+                            limit=remaining,
+                            filters=filters
+                        )
+                        all_results.extend([
+                            self.format_ticket_payload(payload, score, format_type)
+                            for payload, score in results
+                        ])
+                    else:
+                        raw_results = self.simple_filter_search(
+                            collection_name=collection_name,
+                            filters=filters,
+                            client_name=client_name,
+                            recent_only=recent_only,
+                            limit=remaining
+                        )
+                        all_results.extend([
+                            self.format_ticket_payload(payload, format_type=format_type)
+                            for payload in raw_results
+                        ])
+                except Exception as e:
+                    print(f"Erreur dans la collection {collection_name}: {str(e)}")
 
-        all_results.sort(key=lambda r: r.get("created", ""), reverse=True)
+            all_results.sort(key=lambda r: r.get("created", ""), reverse=True)
+            self.cache.store_raw_results(cache_key, query, enriched_query.get("filters", {}), limit, use_embedding, all_results)
+        else:
+            filters_dict = enriched_query.get("filters", {})
+
+        # Étape 4 : construction de la réponse finale selon le format
+
+        format_key = f"{format_type.upper()}:{cache_key}"
+        cached_format = self.cache.get_format(format_key)
+
+        if cached_format:
+            return {
+                "format": format_type,
+                "content": [cached_format["content"]] if isinstance(cached_format["content"], str) else cached_format["content"],
+                "sources": cached_format["sources"],
+                "meta": cached_format.get("meta", {})
+            }
+
+        # Si pas dans le cache, on traite comme avant
 
         if format_type == "Summary":
             joined_summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
             prompt = f"Voici une liste de tickets utilisateurs concernant : {query}\n\n{joined_summaries}\n\nFais-en un résumé clair et concis."
+
             response = openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
@@ -750,6 +775,10 @@ class QdrantSystem:
                 max_tokens=300
             )
             summary_text = response.choices[0].message.content.strip()
+            self.cache.store_format(format_key, "Summary", summary_text, ", ".join(collections), {
+                "erp": filters_dict.get("erp"),
+                "dateFilter": filters_dict.get("date")
+            })
             return {
                 "format": format_type,
                 "content": [summary_text],
@@ -763,6 +792,7 @@ class QdrantSystem:
         elif format_type == "Guide":
             guide_input = "\n".join(r.get("summary", "") + "\n" + r.get("content", "") for r in all_results[:limit] if "content" in r)
             prompt = f"Voici des extraits de tickets. Rédige un guide pratique en étapes pour résoudre le problème évoqué :\n\n{guide_input}"
+
             response = openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
@@ -773,34 +803,38 @@ class QdrantSystem:
                 max_tokens=2000
             )
             guide_text = response.choices[0].message.content.strip()
+            self.cache.store_format(format_key, "Guide", guide_text, ", ".join(collections), {
+                "erp": filters_dict.get("erp"),
+                "dateFilter": filters_dict.get("date")
+            })
             return {
-    "format": format_type,
-    "content": [guide_text],
+                "format": format_type,
+                "content": [guide_text],
                 "sources": ", ".join(collections),
                 "meta": {
                     "erp": filters_dict.get("erp"),
                     "dateFilter": filters_dict.get("date")
                 }
             }
+
         else:  # Detail
             if raw:
                 return {
                     "format": format_type,
-                    "content": all_results[:limit],  # 🔄 payloads enrichis (non formatés)
+                    "content": all_results[:limit],
                     "sources": ", ".join(collections)
                 }
 
             formatted_results = [self.format_response(r, format_type) for r in all_results[:limit]]
-        return {
-    "format": format_type,
-    "content": formatted_results,
-    "sources": ", ".join(collections),
+            return {
+                "format": format_type,
+                "content": formatted_results,
+                "sources": ", ".join(collections),
                 "meta": {
                     "erp": filters_dict.get("erp"),
                     "dateFilter": filters_dict.get("date")
                 }
             }
-
 
 
 

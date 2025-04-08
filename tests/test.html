@@ -7,26 +7,10 @@
     body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
     select, input, button { padding: 10px; margin: 10px 0; width: 100%; }
     pre { background: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; }
-    .result-block { margin-bottom:1em; border-bottom:1px solid #ccc; padding-bottom:1em; }
-    h3 {
-        margin-top: 1em;
-        font-size: 1.1em;
-        color: #333;
-        }
-
-        .result-block {
-        background: #fafafa;
-        border-left: 4px solid #007acc;
-        padding: 10px;
-        margin-bottom: 1em;
-        font-size: 0.95em;
-        line-height: 1.5em;
-        }
-
-        .result-block p {
-        white-space: pre-wrap;
-        }
-
+    .result-block { background: #fafafa; border-left: 4px solid #007acc; padding: 10px; margin-bottom: 1em; font-size: 0.95em; line-height: 1.5em; }
+    .result-block p { white-space: pre-wrap; }
+    .ticket-block ul { list-style: none; padding-left: 0; }
+    .ticket-block ul li { margin-bottom: 4px; }
   </style>
 </head>
 <body>
@@ -63,7 +47,6 @@
     <h2>Résultats</h2>
     <pre id="output">Les résultats apparaîtront ici...</pre>
     <p id="results-count" style="font-weight:bold; margin-top: 1em;"></p>
-
   </div>
 
   <script>
@@ -140,6 +123,7 @@
           output.insertAdjacentHTML("beforeend", `<p>⚠️ Aucun contenu reçu.</p>`);
           return;
         }
+
         function renderMeta(meta) {
             if (!meta) return "";
 
@@ -193,7 +177,7 @@
             output.insertAdjacentHTML("beforeend", summaryHtml);
             document.getElementById("results-count").innerText = `🧮 Nombre de tickets résumés : ${limit}`;
             return;
-            }
+        }
 
         if (format === "Guide") {
             const guideHtml = Array.isArray(data.content)
@@ -214,30 +198,28 @@
             if (data.meta) output.insertAdjacentHTML("beforeend", renderMeta(data.meta));
             document.getElementById("results-count").innerText = `🧮 Nombre de résultats retournés : ${Array.isArray(data.content) ? data.content.length : 1}`;
             return;
-            }
+        }
 
         if (format === "Detail") {
             const detailHtml = Array.isArray(data.content)
                 ? data.content.map((entry, i) => {
-                    const text = typeof entry === "string" ? entry : JSON.stringify(entry, null, 2);
-                    const url = entry.url ? `<p>🔗 <a href="${entry.url}" target="_blank">Voir la source</a></p>` : "";
                     return `
-                    <div class="result-block">
-                        <h3>📋 Détail ${i + 1}</h3>
-                        <p>${text.replace(/\n/g, "<br>")}</p>
-                        ${url}
+                    <div class="result-block ticket-block">
+                      <h3>📋 ${entry.summary || `Ticket ${i + 1}`}</h3>
+                      <ul>
+                        <li><strong>👤 Assigné à :</strong> ${entry.assignee || "Non défini"}</li>
+                        <li><strong>📅 Créé le :</strong> ${entry.created || "?"}</li>
+                        <li><strong>🔄 Mis à jour le :</strong> ${entry.updated || "?"}</li>
+                        <li><strong>📁 Source :</strong> ${entry.source || "?"}</li>
+                        <li><strong>🎯 Score :</strong> ${entry.score !== null ? entry.score : "Non calculé"}</li>
+                        ${entry.url ? `<li><strong>🔗 Lien :</strong> <a href="${entry.url}" target="_blank">Voir la source</a></li>` : ""}
+                      </ul>
                     </div>
                     `;
-                }).join('')
-                : `
-                <div class="result-block">
-                    <h3>📋 Détail</h3>
-                    <p>${data.content.replace(/\n/g, "<br>")}</p>
-                </div>
-                `;
+                  }).join('')
+                : `<div class="result-block"><p>${data.content}</p></div>`;
 
-            output.insertAdjacentHTML("beforeend", detailHtml);
-            if (data.meta) output.insertAdjacentHTML("beforeend", renderMeta(data.meta));
+            output.innerHTML = detailHtml;
             document.getElementById("results-count").innerText = `🧮 Nombre de résultats retournés : ${Array.isArray(data.content) ? data.content.length : 1}`;
             return;
         }
