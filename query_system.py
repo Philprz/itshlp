@@ -119,10 +119,11 @@ def extract_json(text: str) -> str:
     return match.group(0) if match else text
 def call_openai_assistant(erp: str, query: str) -> str:
     assistant_id = None
-    if "netsuite" in erp.lower():
+    if erp and "netsuite" in erp.lower():
         assistant_id = os.getenv("ASSISTANT_ID_NETSUITE")
-    elif "sap" in erp.lower():
+    elif erp and "sap" in erp.lower():
         assistant_id = os.getenv("ASSISTANT_ID_SAP")
+
 
     if not assistant_id:
         return "⚠️ Aucun assistant configuré pour cet ERP."
@@ -749,7 +750,9 @@ class QdrantSystem:
         enriched_query = self.enrich_query_with_openai(query)
         # 🔍 Activation automatique de deepresearch pour les questions fonctionnelles
         deepresearch = True
-
+        # 🔁 Récupération dynamique de l'ERP depuis les filtres enrichis
+        if not erp:
+            erp = enriched_query.get("filters", {}).get("erp")
         # Étape 1bis : vérification de la qualité de la question
         if len(query.strip()) < 10:
             raise ValueError("❌ La question est trop courte pour une analyse pertinente.")
