@@ -11,6 +11,7 @@ import csv
 import os
 import re   
 import json
+import openai
 import unicodedata
 from fuzzywuzzy import fuzz 
 from datetime import datetime, timedelta
@@ -116,6 +117,43 @@ def extract_client_name_from_csv(query: str, csv_path: str = "ListeClients.csv")
 def extract_json(text: str) -> str:
     match = re.search(r"\{[\s\S]*\}", text)
     return match.group(0) if match else text
+def call_openai_assistant(erp: str, query: str) -> str:
+    assistant_id = None
+    if "netsuite" in erp.lower():
+        assistant_id = os.getenv("ASSISTANT_ID_NETSUITE")
+    elif "sap" in erp.lower():
+        assistant_id = os.getenv("ASSISTANT_ID_SAP")
+
+    if not assistant_id:
+        return "⚠️ Aucun assistant configuré pour cet ERP."
+
+    try:
+        thread = openai.beta.threads.create()
+        openai.beta.threads.messages.create(
+            thread_id=thread.id,
+            role="user",
+            content=query
+        )
+
+        run = openai.beta.threads.runs.create(
+            thread_id=thread.id,
+            assistant_id=assistant_id
+        )
+
+        while True:
+            status = openai.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+            if status.status == "completed":
+                break
+            elif status.status in ["failed", "cancelled"]:
+                return f"❌ Assistant {erp} : échec ({status.status})"
+            time.sleep(1)
+
+        messages = openai.beta.threads.messages.list(thread_id=thread.id)
+        response = messages.data[0].content[0].text.value
+        return response
+
+    except Exception as e:
+        return f"❌ Erreur assistant {erp} : {str(e)}"
 class QdrantSystem:
     """Système de requêtes pour les collections Qdrant d'IT SPIRIT"""
     
@@ -684,6 +722,7 @@ class QdrantSystem:
             "content": content,
             "sources": ", ".join(collections_used)
         }
+
     def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary", raw=False, deepresearch=None):
     
         USE_EMBEDDING = os.getenv("USE_EMBEDDING", "true").lower() == "true"
@@ -758,23 +797,7 @@ class QdrantSystem:
             # Si le format est Summary et deepresearch est activé, traitement spécifique
             if format_type == "Summary":
                 summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
-                specialist_response = ""
-
-                erp_detected = filters_dict.get("erp", "").lower()
-                specialist_model = None
-                if "netsuite" in erp_detected:
-                    specialist_model = "g-67f699063b7c8191a13f4efb031ec520"
-                elif "sap" in erp_detected:
-                    specialist_model = "g-67f69eb82a788191a140febb2b8492bb"
-
-                if specialist_model:
-                    print(f"[🧠 Summary enrichi avec GPT spécialisé : {specialist_model}]")
-                    specialist_response = openai_client.chat.completions.create(
-                        model=specialist_model,
-                        messages=[{"role": "user", "content": query}],
-                        temperature=0.4,
-                        max_tokens=800
-                    ).choices[0].message.content.strip()
+                specialist_response = call_openai_assistant(erp, query)
 
                 fusion_prompt = f"""Voici deux sources d'information sur la question suivante : "{query}"
 
@@ -814,24 +837,7 @@ Fais une synthèse claire, complète et utile pour un utilisateur NetSuite."""
                 }
             # Sinon, traitement générique pour les autres formats avec deepresearch
             else:
-                erp_detected = filters_dict.get("erp", "").lower()
-                specialist_model = None
-                if "netsuite" in erp_detected:
-                    specialist_model = "g-67f699063b7c8191a13f4efb031ec520"
-                elif "sap" in erp_detected:
-                    specialist_model = "g-67f69eb82a788191a140febb2b8492bb"
-
-                if specialist_model:
-                    print(f"[🔬] Appel au GPT spécialisé {specialist_model}")
-                    specialist_response = openai_client.chat.completions.create(
-                        model=specialist_model,
-                        messages=[{"role": "user", "content": query}],
-                        temperature=0.4,
-                        max_tokens=1000
-                    ).choices[0].message.content.strip()
-                else:
-                    specialist_response = ""
-
+                specialist_response = call_openai_assistant(erp, query)
                 summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
                 fusion_prompt = f"""Réponds à la question suivante à partir de deux sources complémentaires :\n\n1. Réponse du spécialiste ERP :\n\n{specialist_response}\n\n2. Données internes extraites des tickets et documentations :\n\n{summaries}\n\nRédige une réponse enrichie, claire et utile, en combinant les deux."""
 
