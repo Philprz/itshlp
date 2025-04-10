@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Test API Qdrant IT SPIRIT</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    select, input, button { padding: 10px; margin: 10px 0; width: 100%; }
+    pre { background: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    .result-block { background: #fafafa; border-left: 4px solid #007acc; padding: 10px; margin-bottom: 1em; font-size: 0.95em; line-height: 1.5em; }
+    .result-block p { white-space: pre-wrap; }
+    .ticket-block ul { list-style: none; padding-left: 0; }
+    .ticket-block ul li { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Test API Qdrant IT SPIRIT</h1>
+
+  <label for="query">Requête :</label>
+  <input type="text" id="query" placeholder="Entrez votre requête">
+
+  <label for="client">Client :</label>
+  <select id="client">
+    <option value="">-- Aucun --</option>
+  </select>
+
+  <label for="erp">ERP :</label>
+  <select id="erp">
+    <option value="">-- Aucun --</option>
+    <option value="SAP">SAP</option>
+    <option value="NetSuite">NetSuite</option>
+  </select>
+
+  <label for="format">Format :</label>
+  <select id="format">
+    <option value="Summary">Summary</option>
+    <option value="Detail">Detail</option>
+    <option value="Guide">Guide</option>
+  </select>
+
+  <label for="limit">Nombre de résultats :</label>
+  <input type="number" id="limit" value="10">
+
+  <button id="searchBtn">Rechercher</button>
+
+  <div id="result">
+    <h2>Résultats</h2>
+    <pre id="output">Les résultats apparaîtront ici...</pre>
+    <p id="results-count" style="font-weight:bold; margin-top: 1em;"></p>
+  </div>
+
+  <script>
+    const BASE_URL = "https://itshlp.onrender.com";
+
+    async function loadClients() {
+      try {
+        const response = await fetch(`${BASE_URL}/api/clients`);
+        const data = await response.json();
+        const select = document.getElementById("client");
+
+        if (!select) {
+          console.warn("⚠️ Élément <select id='client'> non trouvé !");
+          return;
+        }
+
+        if (data.clients && Array.isArray(data.clients)) {
+          data.clients.forEach(client => {
+            const opt = document.createElement("option");
+            opt.value = client;
+            opt.textContent = client;
+            select.appendChild(opt);
+          });
+          console.log(`[✅] ${data.clients.length} clients chargés`);
+        } else {
+          console.warn("⚠️ Données clients mal formatées :", data);
+        }
+      } catch (e) {
+        console.error("❌ Erreur lors du chargement des clients", e);
+      }
+    }
+
+    document.getElementById('searchBtn').addEventListener('click', async () => {
+      const output = document.getElementById('output');
+      output.innerHTML = "";
+
+      const query = document.getElementById('query').value;
+      const client = document.getElementById('client').value;
+      const erp = document.getElementById('erp').value;
+      const format = document.getElementById('format').value;
+      const limit = parseInt(document.getElementById('limit').value);
+
+      const payload = {
+        query: query,
+        client: client !== "" ? client : undefined,
+        erp: erp !== "" ? erp : undefined,
+        format: format,
+        limit: limit
+      };
+
+      const baseBlock = document.createElement("div");
+      baseBlock.className = "result-block";
+      baseBlock.innerHTML = `
+        <strong>📤 Requête envoyée à l'API :</strong><br>
+        <pre>${JSON.stringify(payload, null, 2)}</pre>
+        <p>🔢 Nombre demandé : ${limit}</p>
+        <em>En attente de la réponse...</em>
+      `;
+      output.appendChild(baseBlock);
+
+      try {
+        const response = await fetch(`${BASE_URL}/api/search`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        console.log("[DEBUG] Réponse API:", data);
+
+        if (!data || !data.content) {
+          output.insertAdjacentHTML("beforeend", `<p>⚠️ Aucun contenu reçu.</p>`);
+          return;
+        }
+
+        function renderMeta(meta) {
+            if (!meta) return "";
+
+            let html = `<div style="font-size: 0.9em; margin-top: 0.5em;">`;
+
+            if (meta.erp) {
+                html += `<p>🏷️ ERP détecté : <strong>${meta.erp}</strong></p>`;
+            }
+
+            if (meta.dateFilter?.gte) {
+                const date = new Date(meta.dateFilter.gte * 1000).toLocaleDateString();
+                html += `<p>⏱️ Filtre sur les tickets créés après : <strong>${date}</strong></p>`;
+            }
+
+            html += `</div>`;
+            return html;
+        }
+
+        if (format === "Summary") {
+            const summaryText = Array.isArray(data.content) ? data.content[0] : data.content;
+            const sources = (data.sources || "").split(",").map(s => s.trim());
+            const baseUrls = {
+                "JIRA": "https://jira.exemple.com/",
+                "ZENDESK": "https://zendesk.exemple.com/",
+                "CONFLUENCE": "https://confluence.exemple.com/"
+            };
+
+            const sourcesLinks = sources.map(src => {
+                const base = baseUrls[src.toUpperCase()];
+                return base ? `<a href="${base}" target="_blank">${src}</a>` : src;
+            }).join(', ');
+
+            let extraInfo = "";
+            if (data.meta) {
+                if (data.meta.erp) extraInfo += `<p>🏷️ ERP détecté : <strong>${data.meta.erp}</strong></p>`;
+                if (data.meta.dateFilter) {
+                const timestamp = data.meta.dateFilter.gte;
+                const date = new Date(timestamp * 1000).toLocaleDateString();
+                extraInfo += `<p>⏱️ Filtre sur les tickets créés après : <strong>${date}</strong></p>`;
+                }
+            }
+
+            const summaryHtml = `
+                <div class="result-block">
+                <h3>📝 Résumé global</h3>
+                <p>${summaryText.replace(/\n/g, "<br>")}</p>
+                <p>📁 Sources utilisées : ${sourcesLinks}</p>
+                ${extraInfo}
+                </div>
+            `;
+            output.insertAdjacentHTML("beforeend", summaryHtml);
+            document.getElementById("results-count").innerText = `🧮 Nombre de tickets résumés : ${limit}`;
+            return;
+        }
+
+        if (format === "Guide") {
+            const guideHtml = Array.isArray(data.content)
+                ? data.content.map((text, i) => `
+                    <div class="result-block">
+                        <h3>🛠️ Guide ${i + 1}</h3>
+                        <p>${text.replace(/\n/g, "<br>")}</p>
+                    </div>
+                `).join('')
+                : `
+                    <div class="result-block">
+                        <h3>🛠️ Guide</h3>
+                        <p>${data.content.replace(/\n/g, "<br>")}</p>
+                    </div>
+                `;
+
+            output.insertAdjacentHTML("beforeend", guideHtml);
+            if (data.meta) output.insertAdjacentHTML("beforeend", renderMeta(data.meta));
+            document.getElementById("results-count").innerText = `🧮 Nombre de résultats retournés : ${Array.isArray(data.content) ? data.content.length : 1}`;
+            return;
+        }
+
+        if (format === "Detail") {
+            const detailHtml = Array.isArray(data.content)
+                ? data.content.map((entry, i) => {
+                    return `
+                    <div class="result-block ticket-block">
+                      <h3>📋 ${entry.summary || `Ticket ${i + 1}`}</h3>
+                      <ul>
+                        <li><strong>👤 Assigné à :</strong> ${entry.assignee || "Non défini"}</li>
+                        <li><strong>📅 Créé le :</strong> ${entry.created || "?"}</li>
+                        <li><strong>🔄 Mis à jour le :</strong> ${entry.updated || "?"}</li>
+                        <li><strong>📁 Source :</strong> ${entry.source || "?"}</li>
+                        <li><strong>🎯 Score :</strong> ${entry.score !== null ? entry.score : "Non calculé"}</li>
+                        ${entry.url ? `<li><strong>🔗 Lien :</strong> <a href="${entry.url}" target="_blank">Voir la source</a></li>` : ""}
+                      </ul>
+                    </div>
+                    `;
+                  }).join('')
+                : `<div class="result-block"><p>${data.content}</p></div>`;
+
+            output.innerHTML = detailHtml;
+            document.getElementById("results-count").innerText = `🧮 Nombre de résultats retournés : ${Array.isArray(data.content) ? data.content.length : 1}`;
+            return;
+        }
+
+        output.insertAdjacentHTML("beforeend", `<p>⚠️ Format de réponse non reconnu.</p>`);
+
+      } catch (error) {
+        console.error("[Erreur]", error);
+        output.insertAdjacentHTML("beforeend", `<p>❌ Erreur : ${error.message}</p>`);
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", loadClients);
+  </script>
+</body>
+</html>

@@ -755,50 +755,109 @@ class QdrantSystem:
 
         # Étape 5 : deepresearch → GPT spécialisé + fusion
         if deepresearch:
-            erp_detected = filters_dict.get("erp", "").lower()
-            specialist_model = None
-            if "netsuite" in erp_detected:
-                specialist_model = "g-67f699063b7c8191a13f4efb031ec520"
-            elif "sap" in erp_detected:
-                specialist_model = "g-67f69eb82a788191a140febb2b8492bb"
-
-            if specialist_model:
-                print(f"[🔬] Appel au GPT spécialisé {specialist_model}")
-                specialist_response = openai_client.chat.completions.create(
-                    model=specialist_model,
-                    messages=[{"role": "user", "content": query}],
-                    temperature=0.4,
-                    max_tokens=1000
-                ).choices[0].message.content.strip()
-            else:
+            # Si le format est Summary et deepresearch est activé, traitement spécifique
+            if format_type == "Summary":
+                summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
                 specialist_response = ""
 
-            summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
-            fusion_prompt = f"""Réponds à la question suivante à partir de deux sources complémentaires :\n\n1. Réponse du spécialiste ERP :\n\n{specialist_response}\n\n2. Données internes extraites des tickets et documentations :\n\n{summaries}\n\nRédige une réponse enrichie, claire et utile, en combinant les deux."""
+                erp_detected = filters_dict.get("erp", "").lower()
+                specialist_model = None
+                if "netsuite" in erp_detected:
+                    specialist_model = "g-67f699063b7c8191a13f4efb031ec520"
+                elif "sap" in erp_detected:
+                    specialist_model = "g-67f69eb82a788191a140febb2b8492bb"
 
-            gpt_fused = openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Tu combines les connaissances générales et les données internes pour produire une réponse enrichie."},
-                    {"role": "user", "content": fusion_prompt}
-                ],
-                temperature=0.3,
-                max_tokens=1000
-            ).choices[0].message.content.strip()
+                if specialist_model:
+                    print(f"[🧠 Summary enrichi avec GPT spécialisé : {specialist_model}]")
+                    specialist_response = openai_client.chat.completions.create(
+                        model=specialist_model,
+                        messages=[{"role": "user", "content": query}],
+                        temperature=0.4,
+                        max_tokens=800
+                    ).choices[0].message.content.strip()
 
-            return {
-                "format": format_type,
-                "content": [gpt_fused],
-                "sources": ", ".join(collections),
-                "meta": {
+                fusion_prompt = f"""Voici deux sources d'information sur la question suivante : "{query}"
+
+1. Réponse du spécialiste ERP :
+{specialist_response}
+
+2. Résumé de tickets internes :
+{summaries}
+
+Fais une synthèse claire, complète et utile pour un utilisateur NetSuite."""
+
+                response = openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "Tu es un assistant qui produit des synthèses enrichies à partir de sources internes et externes."},
+                        {"role": "user", "content": fusion_prompt}
+                    ],
+                    temperature=0.3,
+                    max_tokens=1000
+                )
+
+                summary_text = response.choices[0].message.content.strip()
+                self.cache.store_format(format_key, "Summary", summary_text, ", ".join(collections), {
                     "erp": filters_dict.get("erp"),
                     "dateFilter": filters_dict.get("date"),
                     "mode": "deepresearch"
+                })
+                return {
+                    "format": format_type,
+                    "content": [summary_text],
+                    "sources": ", ".join(collections),
+                    "meta": {
+                        "erp": filters_dict.get("erp"),
+                        "dateFilter": filters_dict.get("date"),
+                        "mode": "deepresearch"
+                    }
                 }
-            }
+            # Sinon, traitement générique pour les autres formats avec deepresearch
+            else:
+                erp_detected = filters_dict.get("erp", "").lower()
+                specialist_model = None
+                if "netsuite" in erp_detected:
+                    specialist_model = "g-67f699063b7c8191a13f4efb031ec520"
+                elif "sap" in erp_detected:
+                    specialist_model = "g-67f69eb82a788191a140febb2b8492bb"
+
+                if specialist_model:
+                    print(f"[🔬] Appel au GPT spécialisé {specialist_model}")
+                    specialist_response = openai_client.chat.completions.create(
+                        model=specialist_model,
+                        messages=[{"role": "user", "content": query}],
+                        temperature=0.4,
+                        max_tokens=1000
+                    ).choices[0].message.content.strip()
+                else:
+                    specialist_response = ""
+
+                summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
+                fusion_prompt = f"""Réponds à la question suivante à partir de deux sources complémentaires :\n\n1. Réponse du spécialiste ERP :\n\n{specialist_response}\n\n2. Données internes extraites des tickets et documentations :\n\n{summaries}\n\nRédige une réponse enrichie, claire et utile, en combinant les deux."""
+
+                gpt_fused = openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "Tu combines les connaissances générales et les données internes pour produire une réponse enrichie."},
+                        {"role": "user", "content": fusion_prompt}
+                    ],
+                    temperature=0.3,
+                    max_tokens=1000
+                ).choices[0].message.content.strip()
+
+                return {
+                    "format": format_type,
+                    "content": [gpt_fused],
+                    "sources": ", ".join(collections),
+                    "meta": {
+                        "erp": filters_dict.get("erp"),
+                        "dateFilter": filters_dict.get("date"),
+                        "mode": "deepresearch"
+                    }
+                }
 
         # Étape 6 : traitement format classique (Summary, Guide, Detail)
-        if format_type == "Summary":
+        if format_type == "Summary" and not deepresearch:
             joined_summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
             prompt = f"Voici une liste de tickets utilisateurs concernant : {query}\n\n{joined_summaries}\n\nFais-en un résumé clair et concis."
             response = openai_client.chat.completions.create(
