@@ -14,6 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from main import QdrantSystem
+from dotenv import load_dotenv
+load_dotenv()
 
 # Création de l'application FastAPI
 app = FastAPI(
