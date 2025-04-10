@@ -137,6 +137,8 @@ class QdrantSystem:
             db_url=os.getenv("DATABASE_URL"),
             redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0")
         )
+        print("[🔧] REDIS_URL chargé :", os.getenv("REDIS_URL"))
+
     def enrich_query_with_openai(self, user_query):
         """
         Enrichit une requête utilisateur en utilisant l'API OpenAI et en ajoutant des filtres locaux.
