@@ -5,7 +5,7 @@ compatibility_date = "2023-12-01"
 
 # Configuration des variables d'environnement
 [vars]
-QDRANT_URL = "https://b361537d-20a3-4a84-b96f-9efb19837c15.us-east4-0.gcp.cloud.qdrant.io"
+QDRANT_URL = "https://b361537d-20a3-4a84-b96f-9efb19837c15.us-east4-0.gcp.cloud.qdrant.io:6333"
 QDRANT_COLLECTION_ZENDESK = "ZENDESK"
 QDRANT_COLLECTION_JIRA = "JIRA"
 QDRANT_COLLECTION_CONFLUENCE = "CONFLUENCE"
