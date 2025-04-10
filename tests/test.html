@@ -196,6 +196,13 @@
 
             output.insertAdjacentHTML("beforeend", guideHtml);
             if (data.meta) output.insertAdjacentHTML("beforeend", renderMeta(data.meta));
+            if (data.meta && data.meta.mode === "deepresearch") {
+              output.insertAdjacentHTML("beforeend", `
+                <div class="result-block" style="border-left: 4px solid #2a8; background: #e6fff0;">
+                    <p>🔎 Cette réponse a été enrichie par <strong>GPT spécialisé (${data.meta.erp})</strong></p>
+                </div>
+              `);
+            }
             document.getElementById("results-count").innerText = `🧮 Nombre de résultats retournés : ${Array.isArray(data.content) ? data.content.length : 1}`;
             return;
         }

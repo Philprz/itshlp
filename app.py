@@ -98,6 +98,9 @@ async def search(request: SearchRequest):
 
         # Adaptation dynamique du modèle de retour selon le format
         format_type = result.get("format", request.format)
+        if result.get("meta", {}).get("mode") == "deepresearch":
+            print("🧠 GPT spécialisé utilisé via mode DeepResearch")
+            print(f"👉 ERP ciblé : {result['meta'].get('erp')}")
 
         if format_type == "Summary":
             return SummaryResponse(**result)

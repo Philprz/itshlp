@@ -11,7 +11,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.10.0
       - key: QDRANT_URL
-        value: https://b361537d-20a3-4a84-b96f-9efb19837c15.us-east4-0.gcp.cloud.qdrant.io:6333
+        value: false
       - key: QDRANT_COLLECTION_ZENDESK
         value: ZENDESK
       - key: QDRANT_COLLECTION_JIRA

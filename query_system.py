@@ -684,11 +684,19 @@ class QdrantSystem:
             "content": content,
             "sources": ", ".join(collections_used)
         }
-    def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary", raw=False, deepresearch=False):
+    def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary", raw=False, deepresearch=None):
+    
         USE_EMBEDDING = os.getenv("USE_EMBEDDING", "true").lower() == "true"
 
         # Étape 1 : enrichissement de la requête
         enriched_query = self.enrich_query_with_openai(query)
+        # 🔍 Activation automatique de deepresearch pour les questions fonctionnelles
+        if deepresearch is None:
+            if any(word in query.lower() for word in ["comment", "configurer", "paramétrer", "procédure", "guide", "étapes"]):
+                deepresearch = True
+                print("[⚙️] Mode deepresearch activé automatiquement.")
+            else:
+                deepresearch = False
 
         # Étape 1bis : vérification de la qualité de la question
         if len(query.strip()) < 10:
