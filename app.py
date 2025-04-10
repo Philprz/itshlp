@@ -43,6 +43,7 @@ class SearchRequest(BaseModel):
     recentOnly: Optional[bool] = False
     limit: Optional[int] = 10
     raw: Optional[bool] = False
+    deepresearch: Optional[bool] = False
 class TicketPayload(BaseModel):
     client: str
     source: str

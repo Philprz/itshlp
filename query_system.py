@@ -682,27 +682,28 @@ class QdrantSystem:
             "content": content,
             "sources": ", ".join(collections_used)
         }
-    def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary", raw=False):
+    def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary", raw=False, deepresearch=False):
         USE_EMBEDDING = os.getenv("USE_EMBEDDING", "true").lower() == "true"
-        
+
         # Étape 1 : enrichissement de la requête
         enriched_query = self.enrich_query_with_openai(query)
 
-        # Étape 2 : génération de la clé unique de cache
-        cache_key = self.cache.compute_key(query, enriched_query.get("filters", {}), limit)
+        # Étape 1bis : vérification de la qualité de la question
+        if len(query.strip()) < 10:
+            raise ValueError("❌ La question est trop courte pour une analyse pertinente.")
 
-        # Étape 3 : tenter de récupérer les résultats bruts depuis le cache
+        if not any(kw in query.lower() for kw in ["comment", "problème", "erreur", "configurer", "ticket", "étape"]):
+            print("[⚠️] La question semble trop vague ou générique.")
+
+        # Étape 2 : clé de cache
+        filters_dict = enriched_query.get("filters", {})
+        cache_key = self.cache.compute_key(query, filters_dict, limit)
         all_results = self.cache.get_raw_results(cache_key)
 
         if not all_results:
-            # Requête Qdrant si cache vide
-            collections = enriched_query.get("collections")
-            if not collections:
-                collections = self.get_prioritized_collections(client_name, erp)
-
-            filters = self.apply_filters(enriched_query.get("filters", {}))
-            filters_dict = enriched_query.get("filters", {})
-
+            # Étape 3 : recherche dans Qdrant
+            collections = enriched_query.get("collections") or self.get_prioritized_collections(client_name, erp)
+            filters = self.apply_filters(filters_dict)
             limit = enriched_query.get("limit", limit)
             use_embedding = enriched_query.get("use_embedding", USE_EMBEDDING)
 
@@ -712,28 +713,15 @@ class QdrantSystem:
                     remaining = limit - len(all_results)
                     if remaining <= 0:
                         break
-
+                    
                     if use_embedding:
-                        results = self.search_in_collection(
-                            collection_name=collection_name,
-                            query=query,
-                            client_name=client_name,
-                            recent_only=recent_only,
-                            limit=remaining,
-                            filters=filters
-                        )
+                        results = self.search_in_collection(collection_name, query, client_name, recent_only, remaining, filters)
                         all_results.extend([
                             self.format_ticket_payload(payload, score, format_type)
                             for payload, score in results
                         ])
                     else:
-                        raw_results = self.simple_filter_search(
-                            collection_name=collection_name,
-                            filters=filters,
-                            client_name=client_name,
-                            recent_only=recent_only,
-                            limit=remaining
-                        )
+                        raw_results = self.simple_filter_search(collection_name, client_name, recent_only, filters, remaining)
                         all_results.extend([
                             self.format_ticket_payload(payload, format_type=format_type)
                             for payload in raw_results
@@ -742,15 +730,11 @@ class QdrantSystem:
                     print(f"Erreur dans la collection {collection_name}: {str(e)}")
 
             all_results.sort(key=lambda r: r.get("created", ""), reverse=True)
-            self.cache.store_raw_results(cache_key, query, enriched_query.get("filters", {}), limit, use_embedding, all_results)
-        else:
-            filters_dict = enriched_query.get("filters", {})
+            self.cache.store_raw_results(cache_key, query, filters_dict, limit, use_embedding, all_results)
 
-        # Étape 4 : construction de la réponse finale selon le format
-
+        # Étape 4 : vérifie si format déjà calculé
         format_key = f"{format_type.upper()}:{cache_key}"
         cached_format = self.cache.get_format(format_key)
-
         if cached_format:
             return {
                 "format": format_type,
@@ -759,12 +743,54 @@ class QdrantSystem:
                 "meta": cached_format.get("meta", {})
             }
 
-        # Si pas dans le cache, on traite comme avant
+        # Étape 5 : deepresearch → GPT spécialisé + fusion
+        if deepresearch:
+            erp_detected = filters_dict.get("erp", "").lower()
+            specialist_model = None
+            if "netsuite" in erp_detected:
+                specialist_model = "g-67f699063b7c8191a13f4efb031ec520"
+            elif "sap" in erp_detected:
+                specialist_model = "g-67f69eb82a788191a140febb2b8492bb"
 
+            if specialist_model:
+                print(f"[🔬] Appel au GPT spécialisé {specialist_model}")
+                specialist_response = openai_client.chat.completions.create(
+                    model=specialist_model,
+                    messages=[{"role": "user", "content": query}],
+                    temperature=0.4,
+                    max_tokens=1000
+                ).choices[0].message.content.strip()
+            else:
+                specialist_response = ""
+
+            summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
+            fusion_prompt = f"""Réponds à la question suivante à partir de deux sources complémentaires :\n\n1. Réponse du spécialiste ERP :\n\n{specialist_response}\n\n2. Données internes extraites des tickets et documentations :\n\n{summaries}\n\nRédige une réponse enrichie, claire et utile, en combinant les deux."""
+
+            gpt_fused = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Tu combines les connaissances générales et les données internes pour produire une réponse enrichie."},
+                    {"role": "user", "content": fusion_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1000
+            ).choices[0].message.content.strip()
+
+            return {
+                "format": format_type,
+                "content": [gpt_fused],
+                "sources": ", ".join(collections),
+                "meta": {
+                    "erp": filters_dict.get("erp"),
+                    "dateFilter": filters_dict.get("date"),
+                    "mode": "deepresearch"
+                }
+            }
+
+        # Étape 6 : traitement format classique (Summary, Guide, Detail)
         if format_type == "Summary":
             joined_summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
             prompt = f"Voici une liste de tickets utilisateurs concernant : {query}\n\n{joined_summaries}\n\nFais-en un résumé clair et concis."
-
             response = openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
@@ -792,7 +818,6 @@ class QdrantSystem:
         elif format_type == "Guide":
             guide_input = "\n".join(r.get("summary", "") + "\n" + r.get("content", "") for r in all_results[:limit] if "content" in r)
             prompt = f"Voici des extraits de tickets. Rédige un guide pratique en étapes pour résoudre le problème évoqué :\n\n{guide_input}"
-
             response = openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
