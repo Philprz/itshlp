@@ -150,6 +150,7 @@ def call_openai_assistant(erp: str, query: str) -> str:
 
         messages = openai.beta.threads.messages.list(thread_id=thread.id)
         response = messages.data[0].content[0].text.value
+        openai.beta.threads.delete(thread_id=thread.id)
         return response
 
     except Exception as e:
@@ -722,6 +723,23 @@ class QdrantSystem:
             "content": content,
             "sources": ", ".join(collections_used)
         }
+    def is_response_useless(self, text: str) -> bool:
+        """
+        Détecte si la réponse GPT est inutile ou trop vague
+        """
+        useless_patterns = [
+            "je ne peux pas répondre", 
+            "je ne suis pas sûr", 
+            "je ne dispose pas", 
+            "je n'ai pas assez d'informations", 
+            "donnez plus de détails", 
+            "veuillez préciser",
+            "je suis un assistant", 
+            "en tant qu'assistant", 
+            "je ne suis pas capable"
+        ]
+        lower_text = text.lower()
+        return any(p in lower_text for p in useless_patterns)
 
     def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary", raw=False, deepresearch=None):
     
@@ -730,12 +748,7 @@ class QdrantSystem:
         # Étape 1 : enrichissement de la requête
         enriched_query = self.enrich_query_with_openai(query)
         # 🔍 Activation automatique de deepresearch pour les questions fonctionnelles
-        if deepresearch is None:
-            if any(word in query.lower() for word in ["comment", "configurer", "paramétrer", "procédure", "guide", "étapes"]):
-                deepresearch = True
-                print("[⚙️] Mode deepresearch activé automatiquement.")
-            else:
-                deepresearch = False
+        deepresearch = True
 
         # Étape 1bis : vérification de la qualité de la question
         if len(query.strip()) < 10:
@@ -801,13 +814,13 @@ class QdrantSystem:
 
                 fusion_prompt = f"""Voici deux sources d'information sur la question suivante : "{query}"
 
-1. Réponse du spécialiste ERP :
-{specialist_response}
+                    1. Réponse du spécialiste ERP :
+                    {specialist_response}
 
-2. Résumé de tickets internes :
-{summaries}
+                    2. Résumé de tickets internes :
+                    {summaries}
 
-Fais une synthèse claire, complète et utile pour un utilisateur NetSuite."""
+                    Fais une synthèse claire, complète et utile pour un utilisateur NetSuite."""
 
                 response = openai_client.chat.completions.create(
                     model="gpt-4o-mini",
@@ -880,6 +893,17 @@ Fais une synthèse claire, complète et utile pour un utilisateur NetSuite."""
                 "erp": filters_dict.get("erp"),
                 "dateFilter": filters_dict.get("date")
             })
+            if self.is_response_useless(summary_text):
+                return {
+                "format": format_type,
+                "content": ["❌ Aucun résumé utile n’a pu être généré à partir des données internes ou du GPT spécialisé."],
+                "sources": ", ".join(collections),
+                "meta": {
+                    "erp": filters_dict.get("erp"),
+                    "dateFilter": filters_dict.get("date"),
+                    "mode": "deepresearch"
+                }
+            }
             return {
                 "format": format_type,
                 "content": [summary_text],
@@ -907,6 +931,18 @@ Fais une synthèse claire, complète et utile pour un utilisateur NetSuite."""
                 "erp": filters_dict.get("erp"),
                 "dateFilter": filters_dict.get("date")
             })
+            if self.is_response_useless(guide_text):
+                return {
+                "format": format_type,
+                "content": ["❌ Aucun guide utile n’a pu être généré à partir des données internes ou du GPT spécialisé."],
+                "sources": ", ".join(collections),
+                "meta": {
+                        "erp": filters_dict.get("erp"),
+                        "dateFilter": filters_dict.get("date"),
+                        "mode": "deepresearch"
+                    }
+                }
+
             return {
                 "format": format_type,
                 "content": [guide_text],
@@ -926,6 +962,8 @@ Fais une synthèse claire, complète et utile pour un utilisateur NetSuite."""
                 }
 
             formatted_results = [self.format_response(r, format_type) for r in all_results[:limit]]
+            
+
             return {
                 "format": format_type,
                 "content": formatted_results,
