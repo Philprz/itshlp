@@ -30,5 +30,7 @@ services:
         sync: false
       - key: REDIS_URL
         value: redis://default:ASmFAAIjcDFhZTE4MDU2MzQ0OGE0YTE3OGY5ZDJlMDUxNzVkMGM4NXAxMA@finer-octopus-10629.upstash.io:6379
+      - key: DATABASE_URL
+  sync: false
     healthCheckPath: /
     autoDeploy: true
