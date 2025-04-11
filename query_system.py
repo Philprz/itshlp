@@ -948,52 +948,148 @@ class QdrantSystem:
                 max_tokens=2000
             )
             guide_text = response.choices[0].message.content.strip()
-            self.cache.store_format(format_key, "Guide", guide_text, ", ".join(collections), {
-                "erp": filters_dict.get("erp") or client_erp,
-                "dateFilter": filters_dict.get("date")
-            })
+
             if self.is_response_useless(guide_text):
                 return {
-                "format": format_type,
-                "content": ["❌ Aucun guide utile n’a pu être généré à partir des données internes ou du GPT spécialisé."],
-                "sources": ", ".join(collections),
-                "meta": {
+                    "format": format_type,
+                    "content": ["❌ Aucun guide utile n’a pu être généré à partir des données internes ou du GPT spécialisé."],
+                    "sources": ", ".join(collections),
+                    "meta": {
                         "erp": filters_dict.get("erp") or client_erp,
                         "dateFilter": filters_dict.get("date"),
                         "mode": "deepresearch"
                     }
                 }
-            
+
+            self.cache.store_format(
+                format_key,
+                "Guide",
+                [guide_text],
+                ", ".join(collections),
+                {
+                    "erp": filters_dict.get("erp") or client_erp,
+                    "dateFilter": filters_dict.get("date"),
+                    "mode": "deepresearch"
+                }
+            )
+
             return {
                 "format": format_type,
                 "content": [guide_text],
-                "sources": ", ".join(collections),
-                "meta": {
-                    "erp": filters_dict.get("erp")or client_erp,
-                    "dateFilter": filters_dict.get("date")
-                }
-            }
-
-        else:  # Detail
-            if raw:
-                return {
-                    "format": format_type,
-                    "content": all_results[:limit],
-                    "sources": ", ".join(collections)
-                }
-
-            formatted_results = [self.format_response(r, format_type) for r in all_results[:limit]]
-            
-
-            return {
-                "format": format_type,
-                "content": formatted_results,
                 "sources": ", ".join(collections),
                 "meta": {
                     "erp": filters_dict.get("erp") or client_erp,
                     "dateFilter": filters_dict.get("date")
                 }
             }
+
+
+        # Sinon, traitement générique pour les autres formats avec deepresearch
+        else:
+            specialist_response = call_openai_assistant(erp, query)
+            summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
+            fusion_prompt = f"""Réponds à la question suivante à partir de deux sources complémentaires :\n\n1. Réponse du spécialiste ERP :\n\n{specialist_response}\n\n2. Données internes extraites des tickets et documentations :\n\n{summaries}\n\nRédige une réponse enrichie, claire et utile, en combinant les deux."""
+
+            gpt_fused = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Tu combines les connaissances générales et les données internes pour produire une réponse enrichie."},
+                    {"role": "user", "content": fusion_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1000
+            ).choices[0].message.content.strip()
+
+            if format_type == "Detail" and not deepresearch:
+                if all_results:
+                    return {
+                        "format": format_type,
+                        "content": all_results[:limit],
+                        "sources": ", ".join(collections),
+                        "meta": {
+                            "erp": filters_dict.get("erp") or client_erp,
+                            "dateFilter": filters_dict.get("date")
+                        }
+                    }
+                else:
+                    return {
+                        "format": format_type,
+                        "content": ["❌ Aucun ticket trouvé dans les collections interrogées."],
+                        "sources": ", ".join(collections),
+                        "meta": {
+                            "erp": filters_dict.get("erp") or client_erp,
+                            "dateFilter": filters_dict.get("date")
+                        }
+                    }
+
+            # Sinon (fallback enrichi avec GPT)
+            specialist_response = call_openai_assistant(erp, query)
+            summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
+            fusion_prompt = f"""Réponds à la question suivante à partir de deux sources complémentaires :\n\n1. Réponse du spécialiste ERP :\n\n{specialist_response}\n\n2. Données internes extraites des tickets et documentations :\n\n{summaries}\n\nRédige une réponse enrichie, claire et utile, en combinant les deux."""
+
+            gpt_fused = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Tu combines les connaissances générales et les données internes pour produire une réponse enrichie."},
+                    {"role": "user", "content": fusion_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1000
+            ).choices[0].message.content.strip()
+
+            if format_type == "Detail":
+                self.cache.store_format(
+                    format_key,
+                    "Detail",
+                    [{
+                        "summary": gpt_fused,
+                        "created": None,
+                        "updated": None,
+                        "source": "GPT",
+                        "assignee": None,
+                        "url": None,
+                        "score": None
+                    }],
+                    ", ".join(collections),
+                    {
+                        "erp": filters_dict.get("erp") or client_erp,
+                        "dateFilter": filters_dict.get("date"),
+                        "mode": "deepresearch"
+                    }
+                )
+
+                return {
+                    "format": format_type,
+                    "content": [{
+                        "summary": gpt_fused,
+                        "created": None,
+                        "updated": None,
+                        "source": "GPT",
+                        "assignee": None,
+                        "url": None,
+                        "score": None
+                    }],
+                    "sources": ", ".join(collections),
+                    "meta": {
+                        "erp": filters_dict.get("erp") or client_erp,
+                        "dateFilter": filters_dict.get("date"),
+                        "mode": "deepresearch"
+                    }
+                }
+
+            # Sinon (ex: Guide), retour classique texte enrichi
+            return {
+                "format": format_type,
+                "content": [gpt_fused],
+                "sources": ", ".join(collections),
+                "meta": {
+                    "erp": filters_dict.get("erp") or client_erp,
+                    "dateFilter": filters_dict.get("date"),
+                    "mode": "deepresearch"
+                }
+            }
+
+
 
 
 
