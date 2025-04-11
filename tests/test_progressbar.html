@@ -27,6 +27,20 @@
       50% { transform: scale(1.5); opacity: 0.5; }
       100% { transform: scale(1); opacity: 1; }
     }
+    .result-block {
+      border-left: 4px solid #007acc;
+      background: #f9f9f9;
+      margin-bottom: 1.5em;
+      padding: 1em;
+      border-radius: 6px;
+    }
+    .result-block h3 {
+      margin-bottom: 0.5em;
+    }
+    .result-block p {
+      margin: 0.2em 0;
+    }
+
   </style>
 </head>
 <body>
@@ -165,30 +179,32 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
 
       if (isStructured) {
         output.innerHTML = data.content.map((entry, i) => {
-          const isGPT = (entry.source === "GPT");
-          const badge = isGPT
-            ? `<span style="font-size:0.8em; background:#f4b400; color:white; padding:2px 6px; border-radius:4px;">🧠 source: GPT</span>`
-            : `<span style="font-size:0.8em; background:#007acc; color:white; padding:2px 6px; border-radius:4px;">🔷 source: Ticket</span>`;
-
+          const link = entry.url || entry.page_url || "#";
           return `
             <div class="result-block">
-              <h3 style="display:flex; justify-content:space-between;">
-                📌 ${entry.summary || `Ticket ${i + 1}`}
-                ${badge}
-              </h3>
-              <p>
-                👤 ${entry.assignee || "-"} |
-                📅 ${entry.created || "?"} |
-                🔄 ${entry.updated || "?"} |
-                🗂️ ${entry.source || "-"} |
-                ${entry.url ? `<a href="${entry.url}" target="_blank">🔗 lien</a>` : ""}
-              </p>
+              <h3 class="text-lg font-semibold">${entry.summary || `Ticket ${i + 1}`}</h3>
+              <p class="text-sm">👤 <strong>${entry.assignee || "-"}</strong> | 🧾 <strong>${entry.source || "-"}</strong> | 🔖 ${entry.key || "-"}</p>
+              <p class="text-sm">🏢 Client : <strong>${entry.client || "-"}</strong> — 🏷️ ERP : <strong>${entry.erp || "-"}</strong></p>
+              <p class="text-sm">📅 Créé le : ${entry.created || "?"} — 🔄 Mis à jour : ${entry.updated || "?"}</p>
+              <div class="text-sm" style="margin: 0.5em 0;">
+                ${entry.description ? `<p><strong>Description :</strong><br>${entry.description}</p>` : ""}
+                ${entry.content ? `<p><strong>Contenu :</strong><br>${entry.content}</p>` : ""}
+                ${entry.comments ? `<blockquote style="margin-top:0.5em; border-left: 4px solid #ccc; padding-left: 1em; font-style: italic;">💬 ${entry.comments}</blockquote>` : ""}
+              </div>
+              ${entry.company_name ? `<p class="text-sm">🏭 Société : <strong>${entry.company_name}</strong></p>` : ""}
+              ${entry.score !== null ? `<p class="text-sm">🎯 Score : <span style="color:${getScoreColor(entry.color)}; font-weight:bold;">${entry.score}</span></p>` : ""}
+              ${link && link !== "#" ? `<p><a href="${link}" target="_blank" style="color:#007acc;">🔗 Voir dans ${entry.source || "source"}</a></p>` : ""}
             </div>`;
         }).join('');
-        document.getElementById("results-count").innerText = `📋 ${data.content.length} ticket(s) listé(s)`;
+        document.getElementById("results-count").innerText = `📋 ${data.content.length} ticket(s) détaillé(s)`;
         return;
       }
-
+      function getScoreColor(color) {
+  if (color === "green") return "#28a745";
+  if (color === "orange") return "#fd7e14";
+  if (color === "red") return "#dc3545";
+  return "#6c757d";
+}
       output.innerHTML = `<div class="result-block">📭 Aucun ticket trouvé.</div>`;
       document.getElementById("results-count").innerText = `📭 Aucun résultat`;
       return;

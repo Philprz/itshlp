@@ -443,12 +443,18 @@ class QdrantSystem:
 
         base = {
             "client": payload.get("client", "N/A"),
-            "source": payload.get("source_type", "N/A"),
+            "erp": payload.get("erp", "N/A"),
             "summary": payload.get("summary", payload.get("description", "")),
+            "description": payload.get("description", ""),
+            "content": payload.get("content", ""),
+            "comments": payload.get("comments", ""),
             "created": format_timestamp(payload.get("created", "N/A")),
             "updated": format_timestamp(payload.get("updated", "N/A")),
             "assignee": payload.get("assignee", "N/A"),
-            "url": payload.get("url", None),
+            "source": payload.get("source_type", "N/A"),
+            "key": payload.get("key", None),
+            "url": payload.get("url") or payload.get("page_url"),
+            "company_name": payload.get("company_name", None),
             "score": round(score, 4) if score is not None else None,
             "color": get_score_color(score),
         }
@@ -823,6 +829,19 @@ class QdrantSystem:
             self.cache.store_raw_results(cache_key, query, filters_dict, limit, use_embedding, all_results)
 
         # Étape 4 : vérifie si format déjà calculé
+        # 🧩 Patch : si format Detail + résultats trouvés → pas de GPT, on retourne les payloads
+        if format_type == "Detail" and not deepresearch and all_results:
+            return {
+                "format": format_type,
+                "content": all_results[:limit],
+                "sources": ", ".join(collections),
+                "meta": {
+                    "erp": filters_dict.get("erp") or client_erp,
+                    "dateFilter": filters_dict.get("date"),
+                    "use_embedding": use_embedding
+                }
+            }
+
         format_key = f"{format_type.upper()}:{cache_key}"
         cached_format = self.cache.get_format(format_key)
         if cached_format:
