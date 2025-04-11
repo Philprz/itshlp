@@ -777,7 +777,10 @@ class QdrantSystem:
             deepresearch = False
 
         # 🔍 Activation automatique de deepresearch pour les questions fonctionnelles
-        deepresearch = True
+        if deepresearch is None:
+            deepresearch = format_type != "Detail"
+            print(f"🔍 [DEBUG] Deepresearch activé pour le format {format_type} : {deepresearch}")
+
         # 🔁 Récupération dynamique de l'ERP depuis les filtres enrichis
         if not erp:
             erp = enriched_query.get("filters", {}).get("erp")
