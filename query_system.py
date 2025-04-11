@@ -794,6 +794,11 @@ class QdrantSystem:
         # Étape 2 : clé de cache
         filters_dict = enriched_query.get("filters", {})
         cache_key = self.cache.compute_key(query, filters_dict, limit)
+        format_key = f"{format_type.upper()}:{cache_key}"
+
+        print("\n🧠 [DEBUG] ➜ cache_key:", cache_key)
+        print("🧠 [DEBUG] ➜ format_key:", format_key)
+
         all_results = self.cache.get_raw_results(cache_key)
         client_erp = self.get_client_erp(filters.get("client")) if filters.get("client") else None
         if not all_results:
@@ -844,14 +849,17 @@ class QdrantSystem:
 
         format_key = f"{format_type.upper()}:{cache_key}"
         cached_format = self.cache.get_format(format_key)
+
         if cached_format:
+            print("✅ Format récupéré depuis le cache :", format_key)
             return {
                 "format": format_type,
                 "content": [cached_format["content"]] if isinstance(cached_format["content"], str) else cached_format["content"],
                 "sources": cached_format["sources"],
                 "meta": cached_format.get("meta", {})
             }
-
+        else:
+            print("🚫 [CACHE] Aucun format trouvé → on continue.")    
         # Étape 5 : deepresearch → GPT spécialisé + fusion
         if deepresearch:
             # Si le format est Summary et deepresearch est activé, traitement spécifique
@@ -1031,7 +1039,10 @@ class QdrantSystem:
             ).choices[0].message.content.strip()
 
             if format_type == "Detail" and not deepresearch:
+                # Chargement des résultats bruts (tickets)
+                all_results = self.cache.get_raw_results(cache_key)
                 if all_results:
+                    print(f"✅ [CACHE] Résultats Qdrant récupérés depuis le cache : {len(all_results)} entrées.")
                     return {
                         "format": format_type,
                         "content": all_results[:limit],
@@ -1042,6 +1053,7 @@ class QdrantSystem:
                         }
                     }
                 else:
+                    print("🚫 [CACHE] Aucun ticket trouvé dans les collections interrogées.")
                     return {
                         "format": format_type,
                         "content": ["❌ Aucun ticket trouvé dans les collections interrogées."],
