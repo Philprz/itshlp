@@ -832,7 +832,7 @@ class QdrantSystem:
             if format_type == "Summary":
                 summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
                 specialist_response = call_openai_assistant(erp, query)
-
+                erp_label = client_erp or filters_dict.get("erp") or "l'ERP concerné"
                 fusion_prompt = f"""Voici deux sources d'information sur la question suivante : "{query}"
 
                     1. Réponse du spécialiste ERP :
@@ -841,7 +841,7 @@ class QdrantSystem:
                     2. Résumé de tickets internes :
                     {summaries}
 
-                    Fais une synthèse claire, complète et utile pour un utilisateur NetSuite."""
+                    Fais une synthèse claire, complète et utile pour un utilisateur de {erp_label}."""
 
                 response = openai_client.chat.completions.create(
                     model="gpt-4o-mini",
