@@ -753,8 +753,15 @@ class QdrantSystem:
     
         USE_EMBEDDING = os.getenv("USE_EMBEDDING", "true").lower() == "true"
 
-        # Étape 1 : enrichissement de la requête
+        # Étape 1 : enrichissement de la requête via GPT
         enriched_query = self.enrich_query_with_openai(query)
+
+        # 🔁 Activation automatique de use_embedding si la requête parle de tickets/incidents
+        trigger_keywords = ["ticket", "incident", "erreur", "problème", "anomalie", "crash", "panne"]
+        if any(kw in query.lower() for kw in trigger_keywords):
+            enriched_query["use_embedding"] = True
+        else:
+            enriched_query["use_embedding"] = False
         filters = enriched_query.get("filters", {})
         erp = erp or filters.get("erp")
 
@@ -866,7 +873,8 @@ class QdrantSystem:
                     "meta": {
                         "erp": filters_dict.get("erp") or client_erp,
                         "dateFilter": filters_dict.get("date"),
-                        "mode": "deepresearch"
+                        "mode": "deepresearch",
+                        "use_embedding": use_embedding
                     }
                 }
             # Sinon, traitement générique pour les autres formats avec deepresearch
@@ -892,7 +900,8 @@ class QdrantSystem:
                     "meta": {
                         "erp": filters_dict.get("erp") or client_erp,
                         "dateFilter": filters_dict.get("date"),
-                        "mode": "deepresearch"
+                        "mode": "deepresearch",
+                        "use_embedding": use_embedding
                     }
                 }
 
@@ -922,7 +931,8 @@ class QdrantSystem:
                 "meta": {
                     "erp": filters_dict.get("erp") or client_erp,
                     "dateFilter": filters_dict.get("date"),
-                    "mode": "deepresearch"
+                    "mode": "deepresearch",
+                    "use_embedding": use_embedding
                 }
             }
             return {
@@ -957,7 +967,8 @@ class QdrantSystem:
                     "meta": {
                         "erp": filters_dict.get("erp") or client_erp,
                         "dateFilter": filters_dict.get("date"),
-                        "mode": "deepresearch"
+                        "mode": "deepresearch",
+                        "use_embedding": use_embedding
                     }
                 }
 
@@ -1073,7 +1084,8 @@ class QdrantSystem:
                     "meta": {
                         "erp": filters_dict.get("erp") or client_erp,
                         "dateFilter": filters_dict.get("date"),
-                        "mode": "deepresearch"
+                        "mode": "deepresearch",
+                        "use_embedding": use_embedding
                     }
                 }
 
@@ -1085,7 +1097,8 @@ class QdrantSystem:
                 "meta": {
                     "erp": filters_dict.get("erp") or client_erp,
                     "dateFilter": filters_dict.get("date"),
-                    "mode": "deepresearch"
+                    "mode": "deepresearch",
+                    "use_embedding": use_embedding
                 }
             }
 

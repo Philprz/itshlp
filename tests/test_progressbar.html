@@ -110,9 +110,24 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
     });
     const data = await res.json();
     document.getElementById("loader").style.display = "none";
+    // 🔍 Badge recherche vectorielle activée
+    const vectorBadge = data.meta?.use_embedding
+
+      ? `<div style="font-size:0.9em; background:#cce5ff; color:#004085; padding:6px 12px; margin: 0.5em 0; border-left: 4px solid #007acc; border-radius: 4px;">
+          🔎 Recherche vectorielle activée ✅
+        </div>`
+      : "";
+    
+    const output = document.getElementById('output');
+    output.innerHTML = vectorBadge; // Insère le badge tout en haut du bloc
+    const researchBadge = data.meta?.mode === "deepresearch"
+  ? `<div style="font-size:0.9em; background:#e3fcec; color:#155724; padding:6px 12px; margin: 0.5em 0; border-left: 4px solid #28a745; border-radius: 4px;">
+      🤖 Recherche approfondie GPT activée
+    </div>` : "";
+    output.innerHTML = vectorBadge + researchBadge;
 
     if (!data || !data.content) {
-      output.innerHTML = `<p>⚠️ Aucun contenu reçu.</p>`;
+      output.insertAdjacentHTML("beforeend", `<p>⚠️ Aucun contenu reçu.</p>`);
       return;
     }
 
