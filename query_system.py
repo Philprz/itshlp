@@ -203,6 +203,13 @@ class QdrantSystem:
         enriched_json = json.loads(extract_json(enriched_query))
 
         filters = enriched_json.get("filters", {})
+        # 🔁 Si client détecté mais pas d'ERP, on complète avec l'ERP du client
+        if not filters.get("erp") and filters.get("client"):
+            client_erp = self.get_client_erp(filters["client"])
+            if client_erp:
+                filters["erp"] = client_erp
+                enriched_json["filters"] = filters
+
         query_upper = user_query.upper()
 
         if "date" not in filters and any(w in query_upper for w in ["TICKET", "RÉCENT", "RÉCENTS", "RECENT"]):
@@ -748,6 +755,14 @@ class QdrantSystem:
 
         # Étape 1 : enrichissement de la requête
         enriched_query = self.enrich_query_with_openai(query)
+        filters = enriched_query.get("filters", {})
+        erp = erp or filters.get("erp")
+
+        # 💡 PATCH : Si la requête contient "ticket" mais pas d’ERP → on désactive deepresearch
+        if deepresearch and not erp and "ticket" in query.lower():
+            print("🔕 Aucun ERP détecté → Assistant GPT spécialisé désactivé pour cette requête.")
+            deepresearch = False
+
         # 🔍 Activation automatique de deepresearch pour les questions fonctionnelles
         deepresearch = True
         # 🔁 Récupération dynamique de l'ERP depuis les filtres enrichis
@@ -756,15 +771,18 @@ class QdrantSystem:
         # Étape 1bis : vérification de la qualité de la question
         if len(query.strip()) < 10:
             raise ValueError("❌ La question est trop courte pour une analyse pertinente.")
-
-        if not any(kw in query.lower() for kw in ["comment", "problème", "erreur", "configurer", "ticket", "étape"]):
-            print("[⚠️] La question semble trop vague ou générique.")
+        # ❌ Blocage explicite du format Guide si la requête est trop vague
+        if format_type == "Guide" and "ticket" in query.lower():
+            guide_keywords = ["comment", "configurer", "résoudre", "procédure", "étapes", "corriger", "bug", "erreur", "solution"]
+            if not any(kw in query.lower() for kw in guide_keywords):
+                print("⚠️ Requête trop vague pour un guide. Passage automatique en mode 'Detail'.")
+                format_type = "Detail"
 
         # Étape 2 : clé de cache
         filters_dict = enriched_query.get("filters", {})
         cache_key = self.cache.compute_key(query, filters_dict, limit)
         all_results = self.cache.get_raw_results(cache_key)
-
+        client_erp = self.get_client_erp(filters.get("client")) if filters.get("client") else None
         if not all_results:
             # Étape 3 : recherche dans Qdrant
             collections = enriched_query.get("collections") or self.get_prioritized_collections(client_name, erp)
@@ -837,7 +855,7 @@ class QdrantSystem:
 
                 summary_text = response.choices[0].message.content.strip()
                 self.cache.store_format(format_key, "Summary", summary_text, ", ".join(collections), {
-                    "erp": filters_dict.get("erp"),
+                    "erp": filters_dict.get("erp") or client_erp,
                     "dateFilter": filters_dict.get("date"),
                     "mode": "deepresearch"
                 })
@@ -846,7 +864,7 @@ class QdrantSystem:
                     "content": [summary_text],
                     "sources": ", ".join(collections),
                     "meta": {
-                        "erp": filters_dict.get("erp"),
+                        "erp": filters_dict.get("erp") or client_erp,
                         "dateFilter": filters_dict.get("date"),
                         "mode": "deepresearch"
                     }
@@ -872,7 +890,7 @@ class QdrantSystem:
                     "content": [gpt_fused],
                     "sources": ", ".join(collections),
                     "meta": {
-                        "erp": filters_dict.get("erp"),
+                        "erp": filters_dict.get("erp") or client_erp,
                         "dateFilter": filters_dict.get("date"),
                         "mode": "deepresearch"
                     }
@@ -893,7 +911,7 @@ class QdrantSystem:
             )
             summary_text = response.choices[0].message.content.strip()
             self.cache.store_format(format_key, "Summary", summary_text, ", ".join(collections), {
-                "erp": filters_dict.get("erp"),
+                "erp": filters_dict.get("erp") or client_erp,
                 "dateFilter": filters_dict.get("date")
             })
             if self.is_response_useless(summary_text):
@@ -902,7 +920,7 @@ class QdrantSystem:
                 "content": ["❌ Aucun résumé utile n’a pu être généré à partir des données internes ou du GPT spécialisé."],
                 "sources": ", ".join(collections),
                 "meta": {
-                    "erp": filters_dict.get("erp"),
+                    "erp": filters_dict.get("erp") or client_erp,
                     "dateFilter": filters_dict.get("date"),
                     "mode": "deepresearch"
                 }
@@ -912,7 +930,7 @@ class QdrantSystem:
                 "content": [summary_text],
                 "sources": ", ".join(collections),
                 "meta": {
-                    "erp": filters_dict.get("erp"),
+                    "erp": filters_dict.get("erp") or client_erp,
                     "dateFilter": filters_dict.get("date")
                 }
             }
@@ -931,7 +949,7 @@ class QdrantSystem:
             )
             guide_text = response.choices[0].message.content.strip()
             self.cache.store_format(format_key, "Guide", guide_text, ", ".join(collections), {
-                "erp": filters_dict.get("erp"),
+                "erp": filters_dict.get("erp") or client_erp,
                 "dateFilter": filters_dict.get("date")
             })
             if self.is_response_useless(guide_text):
@@ -940,18 +958,18 @@ class QdrantSystem:
                 "content": ["❌ Aucun guide utile n’a pu être généré à partir des données internes ou du GPT spécialisé."],
                 "sources": ", ".join(collections),
                 "meta": {
-                        "erp": filters_dict.get("erp"),
+                        "erp": filters_dict.get("erp") or client_erp,
                         "dateFilter": filters_dict.get("date"),
                         "mode": "deepresearch"
                     }
                 }
-
+            
             return {
                 "format": format_type,
                 "content": [guide_text],
                 "sources": ", ".join(collections),
                 "meta": {
-                    "erp": filters_dict.get("erp"),
+                    "erp": filters_dict.get("erp")or client_erp,
                     "dateFilter": filters_dict.get("date")
                 }
             }
@@ -972,7 +990,7 @@ class QdrantSystem:
                 "content": formatted_results,
                 "sources": ", ".join(collections),
                 "meta": {
-                    "erp": filters_dict.get("erp"),
+                    "erp": filters_dict.get("erp") or client_erp,
                     "dateFilter": filters_dict.get("date")
                 }
             }
