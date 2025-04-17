@@ -213,8 +213,9 @@ class QdrantSystem:
         query_upper = user_query.upper()
 
         if "date" not in filters and any(w in query_upper for w in ["TICKET", "RÉCENT", "RÉCENTS", "RECENT"]):
-            six_months_ago = int(time()) - 60*60*24*180
-            filters["date"] = {"gte": six_months_ago}
+            # Filtre date arrondi au début du mois, stable
+            six_months_ago_date = (datetime.now() - timedelta(days=180)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            filters["date"] = {"gte": int(six_months_ago_date.timestamp())}
             enriched_json["filters"] = filters
 
         if not filters.get("client"):
@@ -285,11 +286,12 @@ class QdrantSystem:
             )
 
         if recent_only:
-            six_months_ago = int((datetime.now() - timedelta(days=180)).timestamp())
+            # Filtre date arrondi au début du mois, stable
+            six_months_ago_date = (datetime.now() - timedelta(days=180)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             filter_conditions.append(
                 FieldCondition(
                     key="created",
-                    range=Range(gte=six_months_ago)
+                    range=Range(gte=int(six_months_ago_date.timestamp()))
                 )
             )
 
@@ -1043,38 +1045,6 @@ class QdrantSystem:
                 temperature=0.3,
                 max_tokens=1000
             ).choices[0].message.content.strip()
-
-            if format_type == "Detail" and not deepresearch:
-                # Chargement des résultats bruts (tickets)
-                all_results = self.cache.get_raw_results(cache_key)
-                if all_results:
-                    print(f"✅ [CACHE] Résultats Qdrant récupérés depuis le cache : {len(all_results)} entrées.")
-                    return {
-                        "format": format_type,
-                        "content": all_results[:limit],
-                        "sources": ", ".join(collections),
-                        "meta": {
-                            "erp": filters_dict.get("erp") or client_erp,
-                            "dateFilter": filters_dict.get("date")
-                        }
-                    }
-                else:
-                    print("🚫 [CACHE] Aucun ticket trouvé dans les collections interrogées.")
-                    return {
-                        "format": format_type,
-                        "content": ["❌ Aucun ticket trouvé dans les collections interrogées."],
-                        "sources": ", ".join(collections),
-                        "meta": {
-                            "erp": filters_dict.get("erp") or client_erp,
-                            "dateFilter": filters_dict.get("date")
-                        }
-                    }
-
-            # Sinon (fallback enrichi avec GPT)
-            specialist_response = call_openai_assistant(erp, query)
-            summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
-            fusion_prompt = f"""Réponds à la question suivante à partir de deux sources complémentaires :\n\n1. Réponse du spécialiste ERP :\n\n{specialist_response}\n\n2. Données internes extraites des tickets et documentations :\n\n{summaries}\n\nRédige une réponse enrichie, claire et utile, en combinant les deux."""
-
             gpt_fused = openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
@@ -1086,6 +1056,7 @@ class QdrantSystem:
             ).choices[0].message.content.strip()
 
             if format_type == "Detail":
+                # Stockage systématique du format Detail généré par GPT dans le cache
                 self.cache.store_format(
                     format_key,
                     "Detail",
@@ -1105,6 +1076,7 @@ class QdrantSystem:
                         "mode": "deepresearch"
                     }
                 )
+                print(f"✅ Format stocké dans le cache : DETAIL:{format_key}")
 
                 return {
                     "format": format_type,

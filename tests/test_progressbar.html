@@ -8,7 +8,7 @@
     select, input, button { padding: 10px; margin: 10px 0; width: 100%; }
     pre { background: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; }
     .result-block { background: #fafafa; border-left: 4px solid #007acc; padding: 10px; margin-bottom: 1em; font-size: 0.95em; line-height: 1.5em; }
-    .result-block p { white-space: pre-wrap; margin: 0.5em 0; }
+    .result-block p { white-space: pre-wrap; margin: 0.3em 0; }
     .gpt-response { background: #fff8e1; border-left: 5px solid #f4b400; }
     .gpt-response h3 { color: #bf9000; font-size: 1em; margin-top: 0; display: flex; justify-content: space-between; align-items: center; }
     .gpt-response button.copy-btn { font-size: 0.8em; padding: 4px 8px; background: #f4b400; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
@@ -184,20 +184,50 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
       if (isStructured) {
         output.innerHTML = data.content.map((entry, i) => {
           const link = entry.url || entry.page_url || "#";
+          // Détection de l'icône source
+          function getSourceIcon(source) {
+            const icons = {
+              jira: '🟦',
+              zendesk: '🟩',
+              email: '✉️',
+              github: '🐙',
+              servicenow: '🟧',
+              default: '📄'
+            };
+            if (!source) return icons.default;
+            const key = source.toLowerCase();
+            return icons[key] || icons.default;
+          }
+          // Bloc description ou content avec bouton Afficher plus
+          function renderExpandableBlock(label, value) {
+            if (!value) return '';
+            const id = `expandable-${i}-${label}`;
+            return `<div class="description" id="${id}" style="max-height:120px; overflow:hidden;">
+              <p><strong>${label} :</strong><br>${value}</p>
+            </div>
+            <button onclick="document.getElementById('${id}').style.maxHeight='none'; this.style.display='none';">Afficher plus</button>`;
+          }
           return `
             <div class="result-block">
               <h3 class="text-lg font-semibold">${entry.summary || `Ticket ${i + 1}`}</h3>
-              <p class="text-sm">👤 <strong>${entry.assignee || "-"}</strong> | 🧾 <strong>${entry.source || "-"}</strong> | 🔖 ${entry.key || "-"}</p>
-              <p class="text-sm">🏢 Client : <strong>${entry.client || "-"}</strong> — 🏷️ ERP : <strong>${entry.erp || "-"}</strong></p>
-              <p class="text-sm">📅 Créé le : ${entry.created || "?"} — 🔄 Mis à jour : ${entry.updated || "?"}</p>
+              <p class="text-sm">
+                👤 <strong>${entry.assignee || "-"}</strong> |
+                🏢 <strong>${entry.client || "-"}</strong> |
+                📅 ${entry.created || "?"} – 🔄 ${entry.updated || "?"}
+              </p>
               <div class="text-sm" style="margin: 0.5em 0;">
-                ${entry.description ? `<p><strong>Description :</strong><br>${entry.description}</p>` : ""}
-                ${entry.content ? `<p><strong>Contenu :</strong><br>${entry.content}</p>` : ""}
+                ${renderExpandableBlock('Description', entry.description)}
+                ${renderExpandableBlock('Contenu', entry.content)}
                 ${entry.comments ? `<blockquote style="margin-top:0.5em; border-left: 4px solid #ccc; padding-left: 1em; font-style: italic;">💬 ${entry.comments}</blockquote>` : ""}
               </div>
               ${entry.company_name ? `<p class="text-sm">🏭 Société : <strong>${entry.company_name}</strong></p>` : ""}
               ${entry.score !== null ? `<p class="text-sm">🎯 Score : <span style="color:${getScoreColor(entry.color)}; font-weight:bold;">${entry.score}</span></p>` : ""}
-              ${link && link !== "#" ? `<p><a href="${link}" target="_blank" style="color:#007acc;">🔗 Voir dans ${entry.source || "source"}</a></p>` : ""}
+              ${link && link !== "#" ? `<p>
+              <a href="${link}" target="_blank" style="color:#007acc; text-decoration:none;">
+                ${getSourceIcon(entry.source)} Voir dans ${entry.source || "source"} (${link})
+              </a>
+            </p>` : ""}
+
             </div>`;
         }).join('');
         document.getElementById("results-count").innerText = `📋 ${data.content.length} ticket(s) détaillé(s)`;
