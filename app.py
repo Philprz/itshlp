@@ -9,7 +9,7 @@ Ce programme expose une API REST pour interroger les collections Qdrant
 import os
 import traceback
 from typing import List, Optional, Union, Any   
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -66,6 +66,11 @@ class SummaryResponse(BaseModel):
     format: str
     content: List[str]
     sources: str
+@app.head("/")
+async def root_head():
+    """Endpoint HEAD pour vérifier que l'API est en ligne sans retour de body."""
+    return Response(status_code=200)
+
 @app.get("/")
 async def root():
     """Point de terminaison racine pour vérifier que l'API est en ligne"""
