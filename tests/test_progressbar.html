@@ -149,10 +149,14 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
       if (!meta) return "";
       let html = "<div style='font-size: 0.9em; margin-top: 0.5em;'>";
       if (meta.erp) html += `<p>🏷️ ERP : <strong>${meta.erp}</strong></p>`;
+
       if (meta.dateFilter?.gte) {
         const d = new Date(meta.dateFilter.gte * 1000).toLocaleDateString();
-        html += `<p>⏱️ Créés après : <strong>${d}</strong></p>`;
+        html += `<div style="background:#f0f9ff; border-left: 4px solid #17a2b8; padding: 8px; margin: 0.5em 0; border-radius: 4px;">
+          ⏱️ Affichage limité aux tickets créés après le : <strong>${d}</strong>
+        </div>`;
       }
+
       return html + "</div>";
     }
 

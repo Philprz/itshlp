@@ -761,15 +761,18 @@ class QdrantSystem:
 
         # Étape 1 : enrichissement de la requête via GPT
         enriched_query = self.enrich_query_with_openai(query)
-
-        # 🔁 Activation automatique de use_embedding si la requête parle de tickets/incidents
-        trigger_keywords = ["ticket", "incident", "erreur", "problème", "anomalie", "crash", "panne"]
-        if any(kw in query.lower() for kw in trigger_keywords):
-            enriched_query["use_embedding"] = True
-        else:
-            enriched_query["use_embedding"] = False
         filters = enriched_query.get("filters", {})
         erp = erp or filters.get("erp")
+
+        # Activation automatique du filtre recent_only selon le contexte
+        if recent_only is False and any(w in query.lower() for w in ["récents", "derniers", "dernier ticket", "récent", "this week", "today"]):
+            print("⏱️ Activation automatique du filtre 'recentOnly'")
+            recent_only = True
+
+        # Forçage pour le format Detail si aucune période n'est précisée
+        if format_type == "Detail" and not filters.get("period"):
+            print("⏱️ Format 'Detail' sans période précisée : recentOnly forcé à True")
+            recent_only = True
 
         # 💡 PATCH : Si la requête contient "ticket" mais pas d’ERP → on désactive deepresearch
         if deepresearch and not erp and "ticket" in query.lower():
