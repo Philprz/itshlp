@@ -766,7 +766,10 @@ class QdrantSystem:
         # Étape 1 : enrichissement de la requête via GPT
         enriched_query = self.enrich_query_with_openai(query)
         filters_dict = enriched_query.get("filters", {})
-        erp = filters_dict.get("erp") or self.get_client_erp(filters_dict.get("client") or client_name)
+        
+        # ✅ On donne priorité à l'utilisateur
+        erp = erp or filters_dict.get("erp") or self.get_client_erp(filters_dict.get("client") or client_name)
+        client_name = client_name or filters_dict.get("client")
         print(f"[🔍 DEBUG] ERP détecté après enrichissement : {erp}")
 
 
