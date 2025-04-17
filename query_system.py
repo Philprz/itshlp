@@ -902,7 +902,7 @@ class QdrantSystem:
                         "content": ["❌ La réponse du GPT spécialisé ne correspond pas à votre question. Veuillez reformuler ou préciser l'ERP concerné."],
                         "sources": ", ".join(collections),
                         "meta": {
-                            "erp": filters.get("erp") or client_erp,
+                            "erp": (filters.erp if filters and hasattr(filters, "erp") else None) or client_erp,
                             "dateFilter": filters.get("date"),
                             "mode": "deepresearch",
                             "use_embedding": use_embedding
