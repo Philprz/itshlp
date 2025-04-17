@@ -766,6 +766,14 @@ class QdrantSystem:
         filters = enriched_query.get("filters", {})
         erp = erp or filters.get("erp")
 
+        # --- Vérification : ERP obligatoire pour requêtes fonctionnelles ---
+        # Cette étape bloque les questions fonctionnelles sans ERP explicite
+        functional_keywords = ["paramétrer", "configurer", "créer", "fournisseur", "client", "article", "facture", "guide"]
+        if not erp and any(kw in query.lower() for kw in functional_keywords):
+            raise ValueError("❌ Votre question semble concerner une fonctionnalité, mais l'ERP n'est pas précisé. Veuillez indiquer s'il s'agit de NetSuite ou SAP.")
+
+        # --- Fin vérification ERP fonctionnel ---
+
         # 🔧 Correction importante : Définir systématiquement collections ici
         collections = enriched_query.get("collections") or self.get_prioritized_collections(client_name, erp)
 
@@ -872,12 +880,36 @@ class QdrantSystem:
             print("🚫 [CACHE] Aucun format trouvé → on continue.")    
         # Étape 5 : deepresearch → GPT spécialisé + fusion
         if deepresearch:
+            # --- Fonction utilitaire : détection de réponse hors sujet du GPT spécialisé ---
+            def is_response_irrelevant(query: str, gpt_text: str) -> bool:
+                """
+                Compare si les mots clés significatifs de la question sont présents dans la réponse.
+                Retourne True si la réponse est jugée hors sujet.
+                """
+                keywords = [w.lower() for w in query.split() if len(w) > 4]
+                match_count = sum(1 for k in keywords if k in gpt_text.lower())
+                relevance_ratio = match_count / max(len(keywords), 1)
+                return relevance_ratio < 0.3  # seuil ajustable
+
             # Si le format est Summary et deepresearch est activé, traitement spécifique
             if format_type == "Summary":
                 summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
                 specialist_response = call_openai_assistant(erp, query)
+                # --- Blocage si la réponse du GPT spécialisé est jugée hors sujet ---
+                if is_response_irrelevant(query, specialist_response):
+                    return {
+                        "format": format_type,
+                        "content": ["❌ La réponse du GPT spécialisé ne correspond pas à votre question. Veuillez reformuler ou préciser l'ERP concerné."],
+                        "sources": ", ".join(collections),
+                        "meta": {
+                            "erp": filters.get("erp") or client_erp,
+                            "dateFilter": filters.get("date"),
+                            "mode": "deepresearch",
+                            "use_embedding": use_embedding
+                        }
+                    }
                 erp_label = client_erp or filters_dict.get("erp") or "l'ERP concerné"
-                fusion_prompt = f"""Voici deux sources d'information sur la question suivante : "{query}"
+                fusion_prompt = f"""Voici deux sources d'information sur la question suivante : \"{query}\""
 
                     1. Réponse du spécialiste ERP :
                     {specialist_response}
@@ -917,6 +949,19 @@ class QdrantSystem:
             # Sinon, traitement générique pour les autres formats avec deepresearch
             else:
                 specialist_response = call_openai_assistant(erp, query)
+                # --- Blocage si la réponse du GPT spécialisé est jugée hors sujet ---
+                if is_response_irrelevant(query, specialist_response):
+                    return {
+                        "format": format_type,
+                        "content": ["❌ La réponse du GPT spécialisé ne correspond pas à votre question. Veuillez reformuler ou préciser l'ERP concerné."],
+                        "sources": ", ".join(collections),
+                        "meta": {
+                            "erp": filters.get("erp") or client_erp,
+                            "dateFilter": filters.get("date"),
+                            "mode": "deepresearch",
+                            "use_embedding": use_embedding
+                        }
+                    }
                 summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
                 fusion_prompt = f"""Réponds à la question suivante à partir de deux sources complémentaires :\n\n1. Réponse du spécialiste ERP :\n\n{specialist_response}\n\n2. Données internes extraites des tickets et documentations :\n\n{summaries}\n\nRédige une réponse enrichie, claire et utile, en combinant les deux."""
 
