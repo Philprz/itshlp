@@ -782,7 +782,8 @@ class QdrantSystem:
         # --- Fin vérification ERP fonctionnel ---
 
         # 🔧 Correction importante : Définir systématiquement collections ici
-        collections = enriched_query.get("collections") or self.get_prioritized_collections(client_name, erp)
+        # ⚠️ Ne jamais faire confiance aux collections GPT si ERP a été forcé
+        collections = self.get_prioritized_collections(client_name, erp)
 
         # Activation automatique du filtre recent_only selon le contexte
         if recent_only is False and any(w in query.lower() for w in ["récents", "derniers", "dernier ticket", "récent", "this week", "today"]):
