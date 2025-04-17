@@ -20,7 +20,9 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from qdrant_client.http.models import FieldCondition, MatchValue, Range, Filter
 from qdrant_client import QdrantClient
-from time import time
+import time
+
+
 from cache_manager import CacheManager
 
 # Chargement des variables d'environnement
