@@ -763,8 +763,9 @@ class QdrantSystem:
 
         # Étape 1 : enrichissement de la requête via GPT
         enriched_query = self.enrich_query_with_openai(query)
-        filters = enriched_query.get("filters", {})
-        erp = getattr(filters, "erp", None) or self.get_client_erp(client_name)
+        filters_dict = enriched_query.get("filters", {})
+        erp = filters_dict.get("erp") or self.get_client_erp(filters_dict.get("client") or client_name)
+        print(f"[🔍 DEBUG] ERP détecté après enrichissement : {erp}")
 
 
         # --- Vérification : ERP obligatoire pour requêtes fonctionnelles ---
@@ -784,7 +785,7 @@ class QdrantSystem:
             recent_only = True
 
         # Forçage pour le format Detail si aucune période n'est précisée
-        if format_type == "Detail" and not filters.get("period"):
+        if format_type == "Detail" and not filters_dict.get("period"):
             print("⏱️ Format 'Detail' sans période précisée : recentOnly forcé à True")
             recent_only = True
 
@@ -798,9 +799,7 @@ class QdrantSystem:
             deepresearch = format_type != "Detail"
             print(f"🔍 [DEBUG] Deepresearch activé pour le format {format_type} : {deepresearch}")
 
-        # 🔁 Récupération dynamique de l'ERP depuis les filtres enrichis
-        if not erp:
-            erp = enriched_query.get("filters", {}).get("erp")
+
         # Étape 1bis : vérification de la qualité de la question
         if len(query.strip()) < 10:
             raise ValueError("❌ La question est trop courte pour une analyse pertinente.")
@@ -820,7 +819,7 @@ class QdrantSystem:
         print("🧠 [DEBUG] ➜ format_key:", format_key)
 
         all_results = self.cache.get_raw_results(cache_key)
-        client_erp = self.get_client_erp(filters.get("client")) if filters.get("client") else None
+        client_erp = self.get_client_erp(filters_dict.get("client")) if filters_dict.get("client") else None
         if not all_results:
             # Étape 3 : recherche dans Qdrant
             filters = self.apply_filters(filters_dict)
