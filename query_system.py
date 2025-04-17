@@ -764,7 +764,8 @@ class QdrantSystem:
         # Étape 1 : enrichissement de la requête via GPT
         enriched_query = self.enrich_query_with_openai(query)
         filters = enriched_query.get("filters", {})
-        erp = erp or filters.get("erp")
+        erp = getattr(filters, "erp", None) or self.get_client_erp(client_name)
+
 
         # --- Vérification : ERP obligatoire pour requêtes fonctionnelles ---
         # Cette étape bloque les questions fonctionnelles sans ERP explicite
@@ -956,8 +957,8 @@ class QdrantSystem:
                         "content": ["❌ La réponse du GPT spécialisé ne correspond pas à votre question. Veuillez reformuler ou préciser l'ERP concerné."],
                         "sources": ", ".join(collections),
                         "meta": {
-                            "erp": filters.get("erp") or client_erp,
-                            "dateFilter": filters.get("date"),
+                            "erp": filters_dict.get("erp") or client_erp,
+                            "dateFilter": filters_dict.get("date"),
                             "mode": "deepresearch",
                             "use_embedding": use_embedding
                         }
