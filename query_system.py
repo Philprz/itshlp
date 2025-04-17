@@ -766,6 +766,9 @@ class QdrantSystem:
         filters = enriched_query.get("filters", {})
         erp = erp or filters.get("erp")
 
+        # 🔧 Correction importante : Définir systématiquement collections ici
+        collections = enriched_query.get("collections") or self.get_prioritized_collections(client_name, erp)
+
         # Activation automatique du filtre recent_only selon le contexte
         if recent_only is False and any(w in query.lower() for w in ["récents", "derniers", "dernier ticket", "récent", "this week", "today"]):
             print("⏱️ Activation automatique du filtre 'recentOnly'")
@@ -811,7 +814,6 @@ class QdrantSystem:
         client_erp = self.get_client_erp(filters.get("client")) if filters.get("client") else None
         if not all_results:
             # Étape 3 : recherche dans Qdrant
-            collections = enriched_query.get("collections") or self.get_prioritized_collections(client_name, erp)
             filters = self.apply_filters(filters_dict)
             limit = enriched_query.get("limit", limit)
             use_embedding = enriched_query.get("use_embedding", USE_EMBEDDING)
