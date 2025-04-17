@@ -895,6 +895,8 @@ class QdrantSystem:
             if format_type == "Summary":
                 summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
                 specialist_response = call_openai_assistant(erp, query)
+                print("🔎 [GPT spécialisé - Summary] :", specialist_response)
+
                 # --- Blocage si la réponse du GPT spécialisé est jugée hors sujet ---
                 if is_response_irrelevant(query, specialist_response):
                     return {
@@ -949,6 +951,8 @@ class QdrantSystem:
             # Sinon, traitement générique pour les autres formats avec deepresearch
             else:
                 specialist_response = call_openai_assistant(erp, query)
+                print("🔎 [GPT spécialisé - Autres formats] :", specialist_response)
+
                 # --- Blocage si la réponse du GPT spécialisé est jugée hors sujet ---
                 if is_response_irrelevant(query, specialist_response):
                     return {
