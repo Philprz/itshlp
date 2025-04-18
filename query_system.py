@@ -1069,6 +1069,7 @@ class QdrantSystem:
                     }
                 }
 
+            # 💾 On stocke uniquement la partie GPT dans le cache pour Guide
             self.cache.store_format(
                 format_key,
                 "Guide",
@@ -1081,16 +1082,19 @@ class QdrantSystem:
                 }
             )
 
+            # 🧠 On retourne GPT + tickets dans deux champs séparés
             return {
                 "format": format_type,
-                "content": [guide_text],
+                "gpt": guide_text,
+                "content": all_results[:limit],
                 "sources": ", ".join(collections),
                 "meta": {
                     "erp": filters_dict.get("erp") or client_erp,
-                    "dateFilter": filters_dict.get("date")
+                    "dateFilter": filters_dict.get("date"),
+                    "mode": "deepresearch",
+                    "use_embedding": use_embedding
                 }
             }
-
 
         # Sinon, traitement générique pour les autres formats avec deepresearch
         else:
