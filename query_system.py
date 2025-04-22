@@ -889,118 +889,118 @@ class QdrantSystem:
             }
         else:
             print("🚫 [CACHE] Aucun format trouvé → on continue.")    
+        # --- Fonction utilitaire : détection de réponse hors sujet du GPT spécialisé ---
+        def is_response_irrelevant(query: str, gpt_text: str) -> bool:
+            """
+            Compare si les mots clés significatifs de la question sont présents dans la réponse.
+            Retourne True si la réponse est jugée hors sujet.
+            """
+            keywords = [w.lower() for w in query.split() if len(w) > 4]
+            match_count = sum(1 for k in keywords if k in gpt_text.lower())
+            relevance_ratio = match_count / max(len(keywords), 1)
+            return relevance_ratio < 0.3  # seuil ajustable
+
         # Étape 5 : deepresearch → GPT spécialisé + fusion
-        if deepresearch:
-            # --- Fonction utilitaire : détection de réponse hors sujet du GPT spécialisé ---
-            def is_response_irrelevant(query: str, gpt_text: str) -> bool:
-                """
-                Compare si les mots clés significatifs de la question sont présents dans la réponse.
-                Retourne True si la réponse est jugée hors sujet.
-                """
-                keywords = [w.lower() for w in query.split() if len(w) > 4]
-                match_count = sum(1 for k in keywords if k in gpt_text.lower())
-                relevance_ratio = match_count / max(len(keywords), 1)
-                return relevance_ratio < 0.3  # seuil ajustable
-
-            # Si le format est Summary et deepresearch est activé, traitement spécifique
-            if format_type == "Summary":
-                summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
-                specialist_response = call_openai_assistant(erp, query)
-                print("🔎 [GPT spécialisé - Summary] :", specialist_response)
-
-                # --- Blocage si la réponse du GPT spécialisé est jugée hors sujet ---
-                if is_response_irrelevant(query, specialist_response):
-                    return {
-                        "format": format_type,
-                        "content": ["❌ La réponse du GPT spécialisé ne correspond pas à votre question. Veuillez reformuler ou préciser l'ERP concerné."],
-                        "sources": ", ".join(collections),
-                        "meta": {
-                            "erp": filters_dict.get("erp") or client_erp,
-                            "dateFilter": filters_dict.get("date"),
-                            "mode": "deepresearch",
-                            "use_embedding": use_embedding
-                        }
+        if deepresearch and format_type == "Summary":
+            # Mode réponse immédiate avec enrichissement différé
+            specialist_response = call_openai_assistant(erp, query)
+            if self.is_response_useless(specialist_response):
+                return {
+                    "format": format_type,
+                    "content": ["❌ La réponse du GPT spécialisé est trop vague ou hors sujet."],
+                    "sources": "GPT uniquement",
+                    "meta": {
+                        "erp": erp,
+                        "partial": True,
+                        "mode": "deepresearch"
                     }
-                erp_label = client_erp or filters_dict.get("erp") or "l'ERP concerné"
-                fusion_prompt = f"""Voici deux sources d'information sur la question suivante : \"{query}\""
+                }
 
-                    1. Réponse du spécialiste ERP :
-                    {specialist_response}
+            self.cache.store_format(f"GPTONLY:{cache_key}", "Summary", specialist_response, "GPT", {
+                "erp": erp,
+                "mode": "deepresearch",
+                "partial": True
+            })
 
-                    2. Résumé de tickets internes :
-                    {summaries}
+            import threading
+            def background_enrichment():
+                try:
+                    result = self.process_query(
+                        query=query,
+                        client_name=client_name,
+                        erp=erp,
+                        recent_only=recent_only,
+                        limit=limit,
+                        format_type=format_type,
+                        raw=raw,
+                        deepresearch=False  # ⚠️ Important : éviter boucle infinie !
+                    )
+                    self.cache.store_format(
+                        format_key,
+                        result["format"],
+                        result["content"][0] if isinstance(result["content"], list) else result["content"],
+                        result.get("sources", "Qdrant"),
+                        result.get("meta", {})
+                    )
+                    print("✅ Enrichissement différé stocké avec succès dans le cache")
+                except Exception as e:
+                    print("[❌] Enrichissement différé échoué :", e)
 
-                    Fais une synthèse claire, complète et utile pour un utilisateur de {erp_label}."""
+            threading.Thread(target=background_enrichment).start()
 
-                response = openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "Tu es un assistant qui produit des synthèses enrichies à partir de sources internes et externes."},
-                        {"role": "user", "content": fusion_prompt}
-                    ],
-                    temperature=0.3,
-                    max_tokens=1000
-                )
+            return {
+                "format": format_type,
+                "content": [specialist_response],
+                "sources": "GPT uniquement",
+                "meta": {
+                    "erp": erp,
+                    "partial": True,
+                    "mode": "deepresearch"
+                }
+            }
+        
+        # Traitement générique pour les autres formats avec deepresearch
+        elif deepresearch:
+            specialist_response = call_openai_assistant(erp, query)
+            print("🔎 [GPT spécialisé - Autres formats] :", specialist_response)
 
-                summary_text = response.choices[0].message.content.strip()
-                self.cache.store_format(format_key, "Summary", summary_text, ", ".join(collections), {
+            # --- Blocage si la réponse du GPT spécialisé est jugée hors sujet ---
+            if is_response_irrelevant(query, specialist_response):
+                return {
+                    "format": format_type,
+                    "content": ["❌ La réponse du GPT spécialisé ne correspond pas à votre question. Veuillez reformuler ou préciser l'ERP concerné."],
+                    "sources": ", ".join(collections),
+                    "meta": {
+                        "erp": filters_dict.get("erp") or client_erp,
+                        "dateFilter": filters_dict.get("date"),
+                        "mode": "deepresearch",
+                        "use_embedding": use_embedding
+                    }
+                }
+            summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
+            fusion_prompt = f"""Réponds à la question suivante à partir de deux sources complémentaires :\n\n1. Réponse du spécialiste ERP :\n\n{specialist_response}\n\n2. Données internes extraites des tickets et documentations :\n\n{summaries}\n\nRédige une réponse enrichie, claire et utile, en combinant les deux."""
+
+            gpt_fused = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Tu combines les connaissances générales et les données internes pour produire une réponse enrichie."},
+                    {"role": "user", "content": fusion_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1000
+            ).choices[0].message.content.strip()
+
+            return {
+                "format": format_type,
+                "content": [gpt_fused],
+                "sources": ", ".join(collections),
+                "meta": {
                     "erp": filters_dict.get("erp") or client_erp,
                     "dateFilter": filters_dict.get("date"),
-                    "mode": "deepresearch"
-                })
-                return {
-                    "format": format_type,
-                    "content": [summary_text],
-                    "sources": ", ".join(collections),
-                    "meta": {
-                        "erp": filters_dict.get("erp") or client_erp,
-                        "dateFilter": filters_dict.get("date"),
-                        "mode": "deepresearch",
-                        "use_embedding": use_embedding
-                    }
+                    "mode": "deepresearch",
+                    "use_embedding": use_embedding
                 }
-            # Sinon, traitement générique pour les autres formats avec deepresearch
-            else:
-                specialist_response = call_openai_assistant(erp, query)
-                print("🔎 [GPT spécialisé - Autres formats] :", specialist_response)
-
-                # --- Blocage si la réponse du GPT spécialisé est jugée hors sujet ---
-                if is_response_irrelevant(query, specialist_response):
-                    return {
-                        "format": format_type,
-                        "content": ["❌ La réponse du GPT spécialisé ne correspond pas à votre question. Veuillez reformuler ou préciser l'ERP concerné."],
-                        "sources": ", ".join(collections),
-                        "meta": {
-                            "erp": filters_dict.get("erp") or client_erp,
-                            "dateFilter": filters_dict.get("date"),
-                            "mode": "deepresearch",
-                            "use_embedding": use_embedding
-                        }
-                    }
-                summaries = "\n".join(r.get("summary", "") for r in all_results[:limit])
-                fusion_prompt = f"""Réponds à la question suivante à partir de deux sources complémentaires :\n\n1. Réponse du spécialiste ERP :\n\n{specialist_response}\n\n2. Données internes extraites des tickets et documentations :\n\n{summaries}\n\nRédige une réponse enrichie, claire et utile, en combinant les deux."""
-
-                gpt_fused = openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "Tu combines les connaissances générales et les données internes pour produire une réponse enrichie."},
-                        {"role": "user", "content": fusion_prompt}
-                    ],
-                    temperature=0.3,
-                    max_tokens=1000
-                ).choices[0].message.content.strip()
-
-                return {
-                    "format": format_type,
-                    "content": [gpt_fused],
-                    "sources": ", ".join(collections),
-                    "meta": {
-                        "erp": filters_dict.get("erp") or client_erp,
-                        "dateFilter": filters_dict.get("date"),
-                        "mode": "deepresearch",
-                        "use_embedding": use_embedding
-                    }
-                }
+            }
 
         # Étape 6 : traitement format classique (Summary, Guide, Detail)
         if format_type == "Summary" and not deepresearch:
