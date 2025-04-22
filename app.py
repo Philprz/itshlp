@@ -15,15 +15,40 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from main import QdrantSystem
 from dotenv import load_dotenv
+from feedback import Feedback, Base
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+
 load_dotenv()
+engine = create_engine(os.getenv("DATABASE_URL"))
+Session = sessionmaker(bind=engine)
+Base.metadata.create_all(engine)
+
+class FeedbackInput(BaseModel):
+    query: str
+    format: str
+    rating: int
+    comment: str = ""
+
 
 # Création de l'application FastAPI
 app = FastAPI(
-    title="IT SPIRIT - API Qdrant",
+    title="IT SPIRIT - API",
     description="API pour interroger les collections Qdrant contenant des informations sur les clients IT SPIRIT et les systèmes ERP",
     version="1.0.0"
 )
-
+@app.post("/api/feedback")
+async def submit_feedback(data: FeedbackInput):
+    session = Session()
+    feedback = Feedback(
+        query=data.query,
+        format=data.format,
+        rating=data.rating,
+        comment=data.comment
+    )
+    session.add(feedback)
+    session.commit()
+    return {"status": "success", "message": "Merci pour votre retour !"}
 # Configuration CORS pour permettre les requêtes cross-origin
 app.add_middleware(
     CORSMiddleware,
