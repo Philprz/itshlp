@@ -769,6 +769,26 @@ class QdrantSystem:
         enriched_query = self.enrich_query_with_openai(query)
         
         filters_dict = enriched_query.get("filters", {})
+
+        # [🔍] Étape 1 : détecter systématiquement un client même si non inclus dans l'enrichissement GPT
+        detected_client, score, _ = extract_client_name_from_csv(query)
+        if detected_client:
+            filters_dict["client"] = detected_client
+            client_name = detected_client  # Surcharger le client_name pour les filtres et priorités
+            print(f"[🔍 PATCH] Client détecté : {detected_client} (score={score})")
+
+        # [📌] Étape 2 : re-détermination des collections en fonction de la logique "ticket"
+        is_ticket_query = "ticket" in query.lower() or "incident" in query.lower()
+        if is_ticket_query:
+            collections = ["JIRA", "ZENDESK"]
+            print("[📁 PATCH] Requête contenant 'ticket' → recherche restreinte à JIRA et ZENDESK")
+        else:
+            # Sinon, on utilise la méthode existante
+            collections = self.get_prioritized_collections(client_name, erp)
+
+        # Met à jour les filtres enrichis
+        enriched_query["filters"] = filters_dict
+
         # 🔁 Forçage ERP utilisateur si précisé
         if erp:
             filters_dict["erp"] = erp
