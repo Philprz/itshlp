@@ -79,7 +79,9 @@ def normalize_string(text: str) -> str:
 def extract_client_name_from_csv(query: str, csv_path: str = "ListeClients.csv"):
     """
     Détecte un nom de client dans une requête utilisateur, basé sur ListeClients.csv
-    Retourne: (nom_client, score, source)
+    - Priorité au match exact
+    - Fuzzy matching avec seuil élevé et vérification anti-faux positifs
+    - Log explicite pour les cas ambigus
     """
     if not query or len(query.strip()) < 2:
         return None, 0.0, {}
@@ -92,23 +94,23 @@ def extract_client_name_from_csv(query: str, csv_path: str = "ListeClients.csv")
     try:
         with open(csv_path, mode='r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f, delimiter=';')
-            for row in reader:
-                client_name = row.get("Client", "").strip()
-                if not client_name:
-                    continue
+            client_names = [row.get("Client", "").strip() for row in reader if row.get("Client")]
 
-                # Match exact
-                if normalize_string(client_name) in query_normalized:
-                    return client_name, 100.0, {"source": client_name}
+        # Vérifie d'abord si un client est mentionné explicitement dans la requête
+        for client in client_names:
+            if normalize_string(client) in query_normalized:
+                return client, 100.0, {"source": client}
 
-                # Match flou
-                score = fuzz.ratio(query_normalized, normalize_string(client_name))
-                if score > best_score:
-                    best_score = score
-                    best_match = client_name
-                    best_source = client_name
+        # Si aucun match exact, applique fuzzy matching avec seuil renforcé
+        for client in client_names:
+            score = fuzz.ratio(query_normalized, normalize_string(client))
+            if score > best_score:
+                best_score = score
+                best_match = client
+                best_source = client
 
-        if best_match and best_score >= 80:
+        if best_match and best_score >= 90:
+            print(f"🔍 [Match flou] Client détecté automatiquement : {best_match} (score {best_score}) — à confirmer")
             return best_match, best_score, {"source": best_source}
 
     except Exception as e:
