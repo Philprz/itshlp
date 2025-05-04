@@ -883,12 +883,12 @@ class QdrantSystem:
 
             all_results.sort(key=lambda r: r.get("created", ""), reverse=True)
             use_embedding = enriched_query.get("use_embedding", USE_EMBEDDING)
-
             self.cache.store_raw_results(cache_key, query, filters_dict, limit, use_embedding, all_results)
 
         # Étape 4 : vérifie si format déjà calculé
         # 🧩 Patch : si format Detail + résultats trouvés → pas de GPT, on retourne les payloads
         if format_type == "Detail" and not deepresearch and all_results:
+            use_embedding = enriched_query.get("use_embedding", USE_EMBEDDING)
             return {
                 "format": format_type,
                 "content": all_results[:limit],
