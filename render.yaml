@@ -1,17 +1,16 @@
-# Fichier de configuration pour le déploiement sur Render
-# Version Python pour l'application Qdrant Web
-
 services:
   - type: web
     name: itshlp
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    env: node
+    buildCommand: npm install && pip install -r requirements.txt && npm run build
+    startCommand: npm run start
     envVars:
+      - key: NODE_VERSION
+        value: 18.12.1
       - key: PYTHON_VERSION
-        value: 3.10.0
+        value: 3.11.0
       - key: QDRANT_URL
-        value: false
+        value: https://b361537d-20a3-4a84-b96f-9efb19837c15.us-east4-0.gcp.cloud.qdrant.io:6333
       - key: QDRANT_COLLECTION_ZENDESK
         value: ZENDESK
       - key: QDRANT_COLLECTION_JIRA
@@ -28,9 +27,3 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
-      - key: REDIS_URL
-        value: redis://default:ASmFAAIjcDFhZTE4MDU2MzQ0OGE0YTE3OGY5ZDJlMDUxNzVkMGM4NXAxMA@finer-octopus-10629.upstash.io:6379
-      - key: DATABASE_URL
-  sync: false
-    healthCheckPath: /
-    autoDeploy: true

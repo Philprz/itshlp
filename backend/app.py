@@ -12,6 +12,7 @@ from typing import List, Optional, Union, Any
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
 from pydantic import BaseModel
 from main import QdrantSystem
 from dotenv import load_dotenv
