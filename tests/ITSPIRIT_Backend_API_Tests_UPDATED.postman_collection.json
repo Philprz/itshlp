@@ -1,0 +1,128 @@
+{
+  "info": {
+    "name": "ITSPIRIT Backend API Tests",
+    "_postman_id": "12345678-abcd-efgh-ijkl-9876543210mn",
+    "description": "Tests automatis\u00e9s de l'API backend ITSPIRIT (Qdrant, GPT, Redis, etc.)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Test API Root",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://itsweb.onrender.com/",
+          "host": [
+            "https://itsweb.onrender.com"
+          ],
+          "path": [
+            ""
+          ]
+        }
+      }
+    },
+    {
+      "name": "Test API HEAD",
+      "request": {
+        "method": "HEAD",
+        "header": [],
+        "url": {
+          "raw": "https://itsweb.onrender.com/",
+          "host": [
+            "https://itsweb.onrender.com"
+          ],
+          "path": [
+            ""
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Clients",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://itsweb.onrender.com/api/clients",
+          "host": [
+            "https://itsweb.onrender.com"
+          ],
+          "path": [
+            "api",
+            "clients"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Search - Fonction NetSuite (ADVIGO)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"Comment configurer la TVA sur NetSuite pour les clients europ\\u00e9ens chez ADVIGO ?\",\n  \"client\": \"ADVIGO\",\n  \"erp\": \"NetSuite\",\n  \"format\": \"Guide\",\n  \"recentOnly\": false,\n  \"limit\": 5,\n  \"deepresearch\": true\n}"
+        },
+        "url": {
+          "raw": "https://itsweb.onrender.com/api/search",
+          "host": [
+            "https://itsweb.onrender.com"
+          ],
+          "path": [
+            "api",
+            "search"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Search - Incidents SAP (AZERGO)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"Quels sont les derniers incidents li\\u00e9s \\u00e0 la gestion des fournisseurs chez AZERGO ?\",\n  \"client\": \"AZERGO\",\n  \"erp\": \"SAP\",\n  \"format\": \"Detail\",\n  \"recentOnly\": true,\n  \"limit\": 5\n}"
+        },
+        "url": {
+          "raw": "https://itsweb.onrender.com/api/search",
+          "host": [
+            "https://itsweb.onrender.com"
+          ],
+          "path": [
+            "api",
+            "search"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Test Endpoint /api/test",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://itsweb.onrender.com/api/test",
+          "host": [
+            "https://itsweb.onrender.com"
+          ],
+          "path": [
+            "api",
+            "test"
+          ]
+        }
+      }
+    }
+  ]
+}

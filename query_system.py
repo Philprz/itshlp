@@ -882,6 +882,8 @@ class QdrantSystem:
                     print(f"Erreur dans la collection {collection_name}: {str(e)}")
 
             all_results.sort(key=lambda r: r.get("created", ""), reverse=True)
+            use_embedding = enriched_query.get("use_embedding", USE_EMBEDDING)
+
             self.cache.store_raw_results(cache_key, query, filters_dict, limit, use_embedding, all_results)
 
         # Étape 4 : vérifie si format déjà calculé
