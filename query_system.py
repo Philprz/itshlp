@@ -764,7 +764,7 @@ class QdrantSystem:
     def process_query(self, query, client_name=None, erp=None, recent_only=False, limit=5, format_type="Summary", raw=False, deepresearch=None):
     
         USE_EMBEDDING = os.getenv("USE_EMBEDDING", "true").lower() == "true"
-
+        use_embedding = USE_EMBEDDING
         # Étape 1 : enrichissement de la requête via GPT
         enriched_query = self.enrich_query_with_openai(query)
         
