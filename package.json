@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"python backend/app.py\" \"next dev\"",
-    "build": "next build",
+    "build": "cd frontend && next build",
     "start": "node server.js",
     "lint": "next lint"
   },
