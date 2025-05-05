@@ -8,7 +8,7 @@ const nextConfig = {
   swcMinify: true,
   compress: true,
   poweredByHeader: false,
-  // Supprimer la ligne output: 'export'
+  output: 'export',
   async rewrites() {
     return [
       {

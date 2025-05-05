@@ -14,7 +14,9 @@ import DetailResultCard from '@/components/DetailResultCard'
 import MetaBadge from '@/components/MetaBadge'
 import LoaderMessage from '@/components/LoaderMessage'
 import SummaryCard from '@/components/SummaryCard'
-
+// Détermine l’URL du backend : valeur d'env en prod, sinon localhost en dev
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:10000';
 function SearchFilters({ client, setClient, clients, erp, setErp, format, setFormat, recentOnly, setRecentOnly, limit, setLimit, setQuery, setResults, setSources, setMeta }) {
   return (
     <div className="filter-grid grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -123,7 +125,7 @@ export default function Home() {
   useEffect(() => {
     if (meta?.partial) {
       const interval = setInterval(async () => {
-        const response = await fetch('/api/search', {
+        const response = await fetch('${API_BASE}/api/search', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -151,7 +153,7 @@ export default function Home() {
   useEffect(() => {
     const fetchClients = async () => {
       try {
-        const res = await fetch('/api/clients')
+        const res = await fetch('${API_BASE}/api/clients')
         const data = await res.json()
         if (Array.isArray(data.clients)) {
           const sorted = data.clients.filter(Boolean).sort((a, b) => a.localeCompare(b))
@@ -177,7 +179,7 @@ export default function Home() {
     setError('');
 
     try {
-      const response = await fetch('/api/search', {
+      const response = await fetch('${API_BASE}/api/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
