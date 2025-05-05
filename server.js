@@ -49,7 +49,7 @@ app.prepare().then(() => {
     // Create options for the proxy request
     const options = {
       hostname: 'localhost',
-      port: 8000,
+      port: 10000,
       path: req.url,
       method: req.method,
       headers: {

@@ -8,18 +8,15 @@ const nextConfig = {
   swcMinify: true,
   compress: true,
   poweredByHeader: false,
-  output: 'export',  // Ajoutez cette ligne pour l'export statique
-  // Commentez la section rewrites car nous n'en aurons plus besoin
-  /*
+  // Supprimer la ligne output: 'export'
   async rewrites() {
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.API_URL || 'https://itshlp.onrender.com'}/api/:path*`,
+        destination: `${process.env.API_URL || 'http://localhost:10000'}/api/:path*`,
       },
     ];
   },
-  */
 };
 
 module.exports = withBundleAnalyzer(nextConfig);
