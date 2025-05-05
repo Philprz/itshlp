@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>IT SPIRIT - Interface de recherche</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    select, input, button { padding: 10px; margin: 10px 0; width: 100%; }
+    pre { background: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    .result-block { background: #fafafa; border-left: 4px solid #007acc; padding: 10px; margin-bottom: 1em; }
+    .result-block p { white-space: pre-wrap; }
+    #loader { display: none; text-align: center; margin: 20px 0; }
+    #loader::after { content: ""; display: inline-block; width: 20px; height: 20px; border: 3px solid #ddd; border-radius: 50%; border-top-color: #007acc; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h1>IT SPIRIT - Interface de recherche</h1>
+
+  <div>
+    <label for="query">Requête:</label>
+    <input type="text" id="query" placeholder="Entrez votre requête..." autofocus>
+  </div>
+
+  <div>
+    <label for="client">Client:</label>
+    <select id="client"><option value="">-- Aucun --</option></select>
+  </div>
+
+  <div>
+    <label for="erp">ERP:</label>
+    <select id="erp">
+      <option value="">-- Aucun --</option>
+      <option value="SAP">SAP</option>
+      <option value="NetSuite">NetSuite</option>
+    </select>
+  </div>
+
+  <div>
+    <label for="format">Format:</label>
+    <select id="format">
+      <option value="Summary">Résumé</option>
+      <option value="Detail">Détaillé</option>
+      <option value="Guide">Guide</option>
+    </select>
+  </div>
+
+  <div>
+    <label for="limit">Nombre de résultats:</label>
+    <input type="number" id="limit" value="5" min="1" max="20">
+  </div>
+
+  <div>
+    <input type="checkbox" id="recentOnly" checked>
+    <label for="recentOnly">Résultats récents uniquement</label>
+  </div>
+
+  <button id="searchBtn">Rechercher</button>
+
+  <div id="loader">Recherche en cours...</div>
+  <div id="results"></div>
+
+  <script>
+    const API_URL = 'https://itshlp.onrender.com/api';
+    
+    // Chargement de la liste des clients
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const response = await fetch(`${API_URL}/clients`);
+        const data = await response.json();
+        const clientSelect = document.getElementById('client');
+        
+        if (data.clients && Array.isArray(data.clients)) {
+          data.clients.forEach(client => {
+            const option = document.createElement('option');
+            option.value = client;
+            option.textContent = client;
+            clientSelect.appendChild(option);
+          });
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement des clients:', error);
+      }
+    });
+    
+    // Recherche
+    document.getElementById('searchBtn').addEventListener('click', async () => {
+      const query = document.getElementById('query').value;
+      if (!query.trim()) {
+        alert('Veuillez entrer une requête.');
+        return;
+      }
+      
+      const client = document.getElementById('client').value;
+      const erp = document.getElementById('erp').value;
+      const format = document.getElementById('format').value;
+      const limit = document.getElementById('limit').value;
+      const recentOnly = document.getElementById('recentOnly').checked;
+      
+      const resultsDiv = document.getElementById('results');
+      const loader = document.getElementById('loader');
+      
+      resultsDiv.innerHTML = '';
+      loader.style.display = 'block';
+      
+      try {
+        const response = await fetch(`${API_URL}/search`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            query,
+            client: client || undefined,
+            erp: erp || undefined,
+            format,
+            recentOnly,
+            limit: parseInt(limit)
+          })
+        });
+        
+        const data = await response.json();
+        
+        loader.style.display = 'none';
+        
+        if (data.content) {
+          // Affichage des résultats
+          let html = '';
+          
+          if (format === 'Detail' && Array.isArray(data.content)) {
+            data.content.forEach((item, index) => {
+              html += `
+                <div class="result-block">
+                  <h3>${item.summary || `Résultat ${index + 1}`}</h3>
+                  ${item.description ? `<p>${item.description}</p>` : ''}
+                  ${item.content ? `<p>${item.content}</p>` : ''}
+                  <div class="meta">
+                    ${item.assignee ? `<p>Assigné à: ${item.assignee}</p>` : ''}
+                    ${item.created ? `<p>Créé le: ${item.created}</p>` : ''}
+                    ${item.updated ? `<p>Mis à jour le: ${item.updated}</p>` : ''}
+                    ${item.url ? `<p><a href="${item.url}" target="_blank">Voir la source</a></p>` : ''}
+                  </div>
+                </div>
+              `;
+            });
+          } else {
+            const content = Array.isArray(data.content) ? data.content[0] : data.content;
+            html += `
+              <div class="result-block">
+                <h3>${format === 'Summary' ? 'Résumé' : format === 'Guide' ? 'Guide' : 'Résultat'}</h3>
+                <p>${content}</p>
+                ${data.sources ? `<p>Sources: ${data.sources}</p>` : ''}
+              </div>
+            `;
+          }
+          
+          resultsDiv.innerHTML = html;
+        } else {
+          resultsDiv.innerHTML = '<div class="result-block"><p>Aucun résultat trouvé.</p></div>';
+        }
+      } catch (error) {
+        loader.style.display = 'none';
+        resultsDiv.innerHTML = `<div class="result-block"><p>Erreur: ${error.message}</p></div>`;
+        console.error('Erreur lors de la recherche:', error);
+      }
+    });
+  </script>
+</body>
+</html>

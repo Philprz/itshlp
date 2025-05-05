@@ -1,15 +1,16 @@
 const express = require('express');
 const { createServer } = require('http');
-const { parse } = require('url');
 const next = require('next');
 const { spawn } = require('child_process');
+const path = require('path');
 
 const dev = process.env.NODE_ENV !== 'production';
-const app = next({ dev, dir: './frontend' });
+const app = next({ dev, dir: './' }); // Changed from './frontend' to './'
 const handle = app.getRequestHandler();
 const port = process.env.PORT || 3000;
 
-// Démarrer le processus Python pour le backend
+// Start backend Python server
+console.log('Starting Python backend server...');
 const backendProcess = spawn('python', ['backend/app.py']);
 
 backendProcess.stdout.on('data', (data) => {
@@ -20,12 +21,32 @@ backendProcess.stderr.on('data', (data) => {
   console.error(`Backend stderr: ${data}`);
 });
 
+backendProcess.on('error', (err) => {
+  console.error('Failed to start backend process:', err);
+});
+
+// Prepare Next.js app
+console.log('Preparing Next.js app...');
 app.prepare().then(() => {
   const server = express();
+  
+  // Add body parsing middleware
+  server.use(express.json());
+  server.use(express.urlencoded({ extended: true }));
 
-  // API routes
+  // Serve static files
+  server.use(express.static(path.join(__dirname, '.next')));
+  server.use(express.static(path.join(__dirname, 'public')));
+
+  // API proxy
   server.use('/api', (req, res) => {
-    const backendUrl = 'http://localhost:8000';
+    // Get the original URL pathname and query
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
+    const targetUrl = `${backendUrl}${req.url}`;
+    
+    console.log(`Proxying API request to: ${targetUrl}`);
+    
+    // Create options for the proxy request
     const options = {
       hostname: 'localhost',
       port: 8000,
@@ -35,33 +56,47 @@ app.prepare().then(() => {
         'Content-Type': 'application/json',
       },
     };
-
-    // Forward the request to the Python backend
+    
+    // Create the proxy request
     const proxyReq = require('http').request(options, (proxyRes) => {
       let body = '';
       proxyRes.on('data', (chunk) => {
         body += chunk;
       });
+      
       proxyRes.on('end', () => {
         res.writeHead(proxyRes.statusCode, proxyRes.headers);
         res.end(body);
       });
     });
-
+    
+    proxyReq.on('error', (err) => {
+      console.error('Proxy request error:', err);
+      res.status(500).json({
+        error: 'Backend server error',
+        message: 'There was an error communicating with the backend server'
+      });
+    });
+    
+    // If there's a request body, write it to the proxy request
     if (req.body) {
-      proxyReq.write(JSON.stringify(req.body));
+      const bodyData = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      proxyReq.write(bodyData);
     }
+    
     proxyReq.end();
   });
-
-  // Next.js app handling
+  
+  // Handle Next.js pages
   server.all('*', (req, res) => {
-    const parsedUrl = parse(req.url, true);
-    handle(req, res, parsedUrl);
+    return handle(req, res);
   });
-
+  
+  // Start server
   server.listen(port, (err) => {
     if (err) throw err;
     console.log(`> Ready on http://localhost:${port}`);
   });
+}).catch((err) => {
+  console.error('Error preparing Next.js app:', err);
 });

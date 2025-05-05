@@ -1,10 +1,10 @@
 {
-  "name": "qdrant-frontend",
+  "name": "itshlp",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "concurrently \"python backend/app.py\" \"next dev\"",
-    "build": "cd frontend && next build",
+    "build": "next build",
     "start": "node server.js",
     "lint": "next lint"
   },
