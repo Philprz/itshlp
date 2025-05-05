@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IT SPIRIT - Système d'Information Qdrant</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #f9fafb;
+    }
+    
+    .result-card {
+      border-left: 4px solid #4f46e5;
+      transition: all 0.2s;
+    }
+    
+    .result-card:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .search-form {
+      background: linear-gradient(to right, #ebf5ff, #f0f7ff);
+    }
+    
+    .app-header {
+      background: linear-gradient(to right, #3b82f6, #4f46e5);
+      border-bottom-left-radius: 0.5rem;
+      border-bottom-right-radius: 0.5rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .app-title {
+      font-size: 1.875rem;
+      font-weight: 700;
+      text-align: center;
+    }
+    
+    .app-subtitle {
+      font-size: 0.875rem;
+      text-align: center;
+      opacity: 0.8;
+      margin-top: 0.25rem;
+    }
+    
+    .search-button {
+      background: linear-gradient(to right, #3b82f6, #4f46e5);
+    }
+    
+    .search-button:hover {
+      background: linear-gradient(to right, #2563eb, #4338ca);
+    }
+    
+    .filter-section {
+      background-color: white;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    .results-section {
+      background-color: white;
+      border-radius: 0.5rem;
+      padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .results-count {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+    
+    .results-sources {
+      font-size: 0.875rem;
+      color: #6b7280;
+    }
+    
+    .error-message {
+      background-color: #fee2e2;
+      color: #b91c1c;
+      padding: 1rem;
+      border-radius: 0.5rem;
+    }
+    
+    .question-client-block {
+      margin-top: 1.5rem;
+      border: 1px dashed #d1d5db;
+      border-radius: 0.5rem;
+      background-color: #f9fafb;
+      padding: 1rem;
+      font-size: 0.875rem;
+    }
+    
+    .animate-fade-in {
+      animation: fadeIn 0.4s ease-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .result-card-enhanced {
+      background-color: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.75rem;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      transition: all 0.2s;
+    }
+    
+    .result-card-enhanced:hover {
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .gpt-response {
+      background-color: #fffbeb;
+      border-left: 5px solid #f59e0b;
+    }
+    
+    .loading-spinner {
+      display: inline-block;
+      width: 1.5rem;
+      height: 1.5rem;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s ease-in-out infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Badge styles */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-right: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .badge-blue {
+      background-color: #dbeafe;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+    }
+    
+    .badge-green {
+      background-color: #d1fae5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+    
+    .badge-yellow {
+      background-color: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+    
+    .badge-red {
+      background-color: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #fecaca;
+    }
+    
+    .badge-purple {
+      background-color: #ede9fe;
+      color: #5b21b6;
+      border: 1px solid #ddd6fe;
+    }
+    
+    .badge-cyan {
+      background-color: #cffafe;
+      color: #155e75;
+      border: 1px solid #a5f3fc;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="app-header py-4 px-6 mb-6">
+    <div class="container mx-auto flex items-center space-x-4">
+      <img src="https://placehold.co/64x64/4f46e5/FFFFFF/png?text=ITS" alt="Logo IT SPIRIT" class="rounded-md">
+      <div>
+        <h1 class="app-title text-white">ITS Help</h1>
+        <p class="app-subtitle text-white opacity-80">Recherchez des informations sur les clients et systèmes ERP</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="container mx-auto px-4 pb-8">
+    <div class="search-form p-6 rounded-lg mb-8">
+      <label for="query" class="block text-lg font-medium mb-2">Requête</label>
+      <div class="flex gap-2 mb-4">
+        <input id="query" type="text" placeholder="Entrez votre requête..." class="flex-1 p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+        <button id="searchBtn" class="search-button text-white px-4 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+          <span id="searchBtnText" class="flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+            </svg>
+            Rechercher
+          </span>
+          <span id="searchBtnLoading" class="hidden items-center">
+            <span class="loading-spinner mr-2"></span>
+            Recherche...
+          </span>
+        </button>
+      </div>
+
+      <div id="filterSection">
+        <button id="toggleFiltersBtn" class="mb-4 px-4 py-2 text-indigo-700 bg-indigo-100 rounded-md hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          Filtres avancés
+        </button>
+
+        <div id="filtersContainer" class="hidden md:grid md:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label for="client" class="block text-sm font-medium text-gray-700 mb-1">Client</label>
+            <select id="client" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+              <option value="">-- Aucun --</option>
+              <!-- Options remplies dynamiquement -->
+            </select>
+          </div>
+
+          <div>
+            <label for="erp" class="block text-sm font-medium text-gray-700 mb-1">ERP</label>
+            <select id="erp" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+              <option value="">-- Aucun --</option>
+              <option value="SAP">SAP</option>
+              <option value="NetSuite">NetSuite</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="format" class="block text-sm font-medium text-gray-700 mb-1">Format de réponse</label>
+            <select id="format" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+              <option value="Summary">Résumé</option>
+              <option value="Detail">Détail</option>
+              <option value="Guide">Guide</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="limit" class="block text-sm font-medium text-gray-700 mb-1">Nombre de résultats</label>
+            <select id="limit" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+              <option value="3">3</option>
+              <option value="5" selected>5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+            </select>
+          </div>
+
+          <div class="md:col-span-2 flex items-center space-x-2 pt-6">
+            <input id="recentOnly" type="checkbox" checked class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+            <label for="recentOnly" class="text-sm font-medium text-gray-700">
+              Afficher uniquement les tickets récents (moins de 6 mois)
+            </label>
+          </div>
+
+          <div class="md:col-span-3">
+            <button id="resetFiltersBtn" class="w-full p-2 mt-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500">
+              Réinitialiser les filtres
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="loaderContainer" class="hidden bg-white rounded-lg p-8 text-center mb-8 animate-fade-in">
+      <div class="flex flex-col items-center">
+        <div class="loading-spinner !border-indigo-600 !border-t-indigo-300 h-12 w-12 mb-4"></div>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">Analyse en cours...</h3>
+        <p class="text-gray-500">Merci de patienter pendant l'analyse de la requête.</p>
+      </div>
+    </div>
+
+    <div id="errorContainer" class="hidden error-message mb-8 animate-fade-in">
+      <div class="flex items-start">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <div>
+          <h3 class="font-medium text-lg">Erreur</h3>
+          <p id="errorMessage" class="mt-1"></p>
+        </div>
+      </div>
+    </div>
+
+    <div id="resultsContainer" class="hidden results-section mb-8 animate-fade-in">
+      <div class="results-header">
+        <h2 id="resultsTitle" class="results-count">Résultats</h2>
+        <p id="resultsSources" class="results-sources"></p>
+      </div>
+
+      <div id="metaBadges" class="flex flex-wrap mb-4"></div>
+      
+      <div id="resultsStatusMessage" class="text-sm italic text-gray-600 mb-4"></div>
+
+      <div id="resultsContent" class="space-y-6 max-h-[600px] overflow-y-auto pr-2"></div>
+
+      <div id="clientQuestion" class="question-client-block mt-6 hidden">
+        <p class="font-medium mb-2">Est-ce que votre question porte sur un client en particulier ?</p>
+        <div class="flex flex-wrap gap-4 items-center">
+          <select id="clientQuickSelect" class="p-2 border border-gray-300 rounded-md">
+            <option value="">-- Sélectionner un client --</option>
+            <!-- Options remplies dynamiquement -->
+          </select>
+          <button id="relanchWithClientBtn" class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-md text-sm">
+            Relancer avec ce client
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // Configuration
+    const API_URL = 'https://itshlp.onrender.com/api';
+    
+    // Éléments DOM
+    const elements = {
+      query: document.getElementById('query'),
+      searchBtn: document.getElementById('searchBtn'),
+      searchBtnText: document.getElementById('searchBtnText'),
+      searchBtnLoading: document.getElementById('searchBtnLoading'),
+      toggleFiltersBtn: document.getElementById('toggleFiltersBtn'),
+      filtersContainer: document.getElementById('filtersContainer'),
+      client: document.getElementById('client'),
+      clientQuickSelect: document.getElementById('clientQuickSelect'),
+      erp: document.getElementById('erp'),
+      format: document.getElementById('format'),
+      limit: document.getElementById('limit'),
+      recentOnly: document.getElementById('recentOnly'),
+      resetFiltersBtn: document.getElementById('resetFiltersBtn'),
+      loaderContainer: document.getElementById('loaderContainer'),
+      errorContainer: document.getElementById('errorContainer'),
+      errorMessage: document.getElementById('errorMessage'),
+      resultsContainer: document.getElementById('resultsContainer'),
+      resultsTitle: document.getElementById('resultsTitle'),
+      resultsSources: document.getElementById('resultsSources'),
+      resultsStatusMessage: document.getElementById('resultsStatusMessage'),
+      metaBadges: document.getElementById('metaBadges'),
+      resultsContent: document.getElementById('resultsContent'),
+      clientQuestion: document.getElementById('clientQuestion'),
+      relanchWithClientBtn: document.getElementById('relanchWithClientBtn')
+    };
+
+    // Événements
+    elements.searchBtn.addEventListener('click', performSearch);
+    elements.query.addEventListener('keypress', e => e.key === 'Enter' && performSearch());
+    elements.toggleFiltersBtn.addEventListener('click', toggleFilters);
+    elements.resetFiltersBtn.addEventListener('click', resetFilters);
+    elements.relanchWithClientBtn.addEventListener('click', relanchWithClient);
+
+    // Charger les clients au démarrage
+    document.addEventListener('DOMContentLoaded', loadClients);
+
+    // Fonctions
+    async function loadClients() {
+      try {
+        const response = await fetch(`${API_URL}/clients`);
+        const data = await response.json();
+        
+        if (data.clients && Array.isArray(data.clients)) {
+          const sortedClients = [...data.clients].filter(Boolean).sort();
+          
+          // Remplir le sélecteur principal
+          sortedClients.forEach(client => {
+            const option = document.createElement('option');
+            option.value = client;
+            option.textContent = client;
+            elements.client.appendChild(option);
+          });
+          
+          // Remplir le sélecteur rapide
+          sortedClients.forEach(client => {
+            const option = document.createElement('option');
+            option.value = client;
+            option.textContent = client;
+            elements.clientQuickSelect.appendChild(option);
+          });
+          
+          console.log(` ${sortedClients.length} clients chargés`);
+        }
+      } catch (error) {
+        console.error(' Erreur lors du chargement des clients:', error);
+        showError(`Impossible de charger la liste des clients: ${error.message}`);
+      }
+    }
+
+    function toggleFilters() {
+      const isHidden = elements.filtersContainer.classList.contains('hidden');
+      elements.filtersContainer.classList.toggle('hidden', !isHidden);
+      elements.toggleFiltersBtn.textContent = isHidden ? 'Masquer les filtres' : 'Filtres avancés';
+    }
+
+    function resetFilters() {
+      elements.client.value = '';
+      elements.erp.value = '';
+      elements.format.value = 'Summary';
+      elements.limit.value = '5';
+      elements.recentOnly.checked = true;
+      elements.query.value = '';
+      
+      // Masquer résultats et erreurs
+      elements.resultsContainer.classList.add('hidden');
+      elements.errorContainer.classList.add('hidden');
+      elements.loaderContainer.classList.add('hidden');
+    }
+
+    function relanchWithClient() {
+      const selectedClient = elements.clientQuickSelect.value;
+      if (selectedClient) {
+        elements.client.value = selectedClient;
+        performSearch();
+      }
+    }
+
+    function showError(message) {
+      elements.errorMessage.textContent = message;
+      elements.errorContainer.classList.remove('hidden');
+      elements.loaderContainer.classList.add('hidden');
+      elements.resultsContainer.classList.add('hidden');
+    }
+
+    function showLoading() {
+      elements.searchBtnText.classList.add('hidden');
+      elements.searchBtnLoading.classList.remove('hidden');
+      elements.searchBtnLoading.classList.add('flex');
+      elements.searchBtn.disabled = true;
+      elements.loaderContainer.classList.remove('hidden');
+      elements.errorContainer.classList.add('hidden');
+      elements.resultsContainer.classList.add('hidden');
+    }
+
+    function hideLoading() {
+      elements.searchBtnText.classList.remove('hidden');
+      elements.searchBtnLoading.classList.add('hidden');
+      elements.searchBtnLoading.classList.remove('flex');
+      elements.searchBtn.disabled = false;
+      elements.loaderContainer.classList.add('hidden');
+    }
+
+    async function performSearch() {
+      const query = elements.query.value.trim();
+      
+      if (!query) {
+        showError('Veuillez entrer une requête de recherche');
+        return;
+      }
+      
+      const client = elements.client.value;
+      const erp = elements.erp.value;
+      const format = elements.format.value;
+      const limit = elements.limit.value;
+      const recentOnly = elements.recentOnly.checked;
+      
+      // Afficher le chargement
+      showLoading();
+      
+      // Réinitialiser les conteneurs de résultats
+      elements.resultsContent.innerHTML = '';
+      elements.metaBadges.innerHTML = '';
+      elements.resultsSources.textContent = '';
+      elements.resultsStatusMessage.textContent = '';
+      
+      try {
+        const response = await fetch(`${API_URL}/search`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query,
+            client: client || undefined,
+            erp: erp || undefined,
+            format,
+            recentOnly,
+            limit: parseInt(limit)
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Erreur serveur: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        displayResults(data, format);
+        
+      } catch (error) {
+        console.error(' Erreur lors de la recherche:', error);
+        showError(`La recherche a échoué: ${error.message}`);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function displayResults(data, format) {
+      if (!data || !data.content) {
+        showError('Aucun contenu reçu du serveur');
+        return;
+      }
+      
+      // Afficher les métadonnées
+      displayMetadata(data.meta);
+      
+      // Afficher les sources
+      elements.resultsSources.textContent = data.sources ? `Sources: ${data.sources}` : '';
+      
+      // Messages d'état
+      if (elements.recentOnly.checked) {
+        elements.resultsStatusMessage.innerHTML = '<span class="text-green-600"> Filtrage activé : tickets créés il y a moins de 6 mois</span>';
+      }
+      
+      // Afficher les résultats en fonction du format
+      const content = data.content;
+      
+      if (format === 'Detail' && Array.isArray(content) && typeof content[0] === 'object') {
+        // Format détaillé - affichage de tickets
+        elements.resultsTitle.textContent = `Résultats (${content.length})`;
+        
+        // Message format
+        const formatMessage = document.createElement('p');
+        formatMessage.className = 'text-sm italic text-gray-700 mb-2';
+        formatMessage.innerHTML += ' Format sélectionné : <strong>Affichage détaillé</strong>';
+        elements.resultsContent.appendChild(formatMessage);
+        
+        // Afficher chaque ticket
+        content.forEach(item => {
+          elements.resultsContent.appendChild(createDetailCard(item));
+        });
+        
+      } else if (format === 'Summary') {
+        // Format résumé
+        elements.resultsTitle.textContent = 'Résumé global';
+        
+        // Message format
+        const formatMessage = document.createElement('p');
+        formatMessage.className = 'text-sm italic text-gray-700 mb-2';
+        formatMessage.innerHTML += ' Format sélectionné : <strong>Résumé global</strong>';
+        elements.resultsContent.appendChild(formatMessage);
+        
+        const contentText = Array.isArray(content) ? content[0] : content;
+        const isGpt = data.meta && data.meta.mode === 'deepresearch';
+        
+        elements.resultsContent.appendChild(createSummaryCard(contentText, 'Summary', isGpt));
+        
+      } else if (format === 'Guide') {
+        // Format guide
+        elements.resultsTitle.textContent = 'Guide pratique';
+        
+        // Message format
+        const formatMessage = document.createElement('p');
+        formatMessage.className = 'text-sm italic text-gray-700 mb-2';
+        formatMessage.innerHTML += ' Format sélectionné : <strong>Guide pratique</strong>';
+        elements.resultsContent.appendChild(formatMessage);
+        
+        const contentText = Array.isArray(content) ? content[0] : content;
+        const isGpt = data.meta && data.meta.mode === 'deepresearch';
+        
+        elements.resultsContent.appendChild(createSummaryCard(contentText, 'Guide', isGpt));
+        
+      } else {
+        // Autre format ou contenu non reconnu
+        elements.resultsTitle.textContent = 'Résultats';
+        
+        if (Array.isArray(content)) {
+          content.forEach(item => {
+            if (typeof item === 'string') {
+              elements.resultsContent.appendChild(createTextCard(item));
+            } else {
+              elements.resultsContent.appendChild(createDetailCard(item));
+            }
+          });
+        } else if (typeof content === 'string') {
+          elements.resultsContent.appendChild(createTextCard(content));
+        } else if (content) {
+          elements.resultsContent.appendChild(createDetailCard(content));
+        }
+      }
+      
+      // Afficher le bloc client question si format Summary ou Guide
+      if (['Summary', 'Guide'].includes(format)) {
+        elements.clientQuestion.classList.remove('hidden');
+      } else {
+        elements.clientQuestion.classList.add('hidden');
+      }
+      
+      // Afficher le conteneur de résultats
+      elements.resultsContainer.classList.remove('hidden');
+    }
+
+    function displayMetadata(meta) {
+      if (!meta) return;
+      
+      // Recherche vectorielle
+      if (meta.use_embedding) {
+        addBadge(' Recherche vectorielle activée', 'badge-blue');
+      }
+      
+      // Mode recherche GPT
+      if (meta.mode === 'deepresearch') {
+        addBadge(' Recherche GPT enrichie', 'badge-green');
+      }
+      
+      // Filtre date
+      if (meta.dateFilter && meta.dateFilter.gte) {
+        const date = new Date(meta.dateFilter.gte * 1000).toLocaleDateString();
+        addBadge(` Filtré après le ${date}`, 'badge-cyan');
+      }
+      
+      // ERP
+      if (meta.erp) {
+        const erpClass = meta.erp === 'SAP' ? 'badge-purple' : 'badge-yellow';
+        addBadge(` ERP : ${meta.erp}`, erpClass);
+      }
+      
+      // Partiel
+      if (meta.partial) {
+        addBadge(' Réponse partielle - enrichissement en cours', 'badge-yellow');
+      }
+    }
+
+    function addBadge(text, className) {
+      const badge = document.createElement('span');
+      badge.className = `badge ${className}`;
+      badge.textContent = text;
+      elements.metaBadges.appendChild(badge);
+    }
+
+    // Fonctions de création de cartes
+    function createTextCard(text) {
+      const card = document.createElement('div');
+      card.className = 'bg-white border rounded-xl p-4 shadow-sm result-card';
+      card.innerHTML = `<p class="text-gray-800 whitespace-pre-wrap">${text}</p>`;
+      return card;
+    }
+
+    function createSummaryCard(content, format, isGpt) {
+      const card = document.createElement('div');
+      card.className = 'bg-white border-l-4 border-blue-600 p-6 space-y-4 rounded-xl shadow-sm';
+      
+      const title = format === 'Summary' ? ' Résumé global' : ' Guide pratique';
+      const badge = isGpt
+        ? '<span class="text-xs bg-yellow-400 text-white px-2 py-1 rounded"> source: GPT</span>'
+        : '<span class="text-xs bg-blue-600 text-white px-2 py-1 rounded"> source: Tickets</span>';
+      
+      card.innerHTML = `
+        <div class="flex justify-between items-center">
+          <h3 class="text-lg font-semibold text-gray-900">${title}</h3>
+          ${badge}
+        </div>
+        <p class="text-sm text-gray-700 whitespace-pre-wrap">${content}</p>
+      `;
+      
+      return card;
+    }
+
+    function createDetailCard(item) {
+      const scoreColor = getScoreColor(item.color);
+      
+      const card = document.createElement('div');
+      card.className = 'result-card-enhanced p-6 space-y-4 animate-fade-in';
+      
+      let html = `
+        <div class="flex justify-between items-start">
+          <div class="space-y-1">
+            <div class="flex justify-between items-center mb-1">
+              <h3 class="text-xl font-bold text-gray-900">${item.summary || item.key || 'Ticket'}</h3>
+            </div>
+
+            <div class="flex flex-wrap gap-2 text-sm">
+      `;
+      
+      if (item.assignee && item.assignee !== 'N/A') {
+        html += `<span class="badge badge-green"> ${item.assignee}</span>`;
+      }
+      
+      if (item.client && item.client !== 'N/A') {
+        html += `<span class="badge badge-blue"> ${item.client}</span>`;
+      }
+      
+      html += `
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // Ajouter le contenu du ticket
+      html += `
+        <div class="space-y-2">
+          <p class="text-gray-800 whitespace-pre-wrap">${item.content}</p>
+        </div>
+      `;
+      
+      card.innerHTML = html;
+      
+      return card;
+    }
+
+    function getScoreColor(score) {
+      if (score < 0.3) {
+        return 'bg-red-500';
+      } else if (score < 0.6) {
+        return 'bg-yellow-500';
+      } else {
+        return 'bg-green-500';
+      }
+    }
+  </script>
+</body>
+</html>

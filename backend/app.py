@@ -51,11 +51,18 @@ async def submit_feedback(data: FeedbackInput):
     session.commit()
     return {"status": "success", "message": "Merci pour votre retour !"}
 # Configuration CORS pour permettre les requêtes cross-origin
+# ALLOWED_ORIGINS peut contenir plusieurs URL séparées par des virgules
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").split(",")
+
+# Autorise tout sous‑domaine *.onrender.com (pratique pour les previews Render)
+ALLOWED_ORIGIN_REGEX = r"https:\/\/.*\.onrender\.com"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En production, spécifier l'origine exacte du frontend
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=[o for o in ALLOWED_ORIGINS if o],  # liste explicite
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,          # ou regex
+    allow_credentials=True,                           # gardez True ⇔ liste/regex ≠ "*"
+    allow_methods=["GET", "POST", "OPTIONS"],         # servez‑vous uniquement des méthodes nécessaires
     allow_headers=["*"],
 )
 
