@@ -1208,7 +1208,8 @@ class QdrantSystem:
 # Fonction principale pour tester le système
 def main():
     """Fonction principale pour tester le système"""
-    clients_file = "/home/ubuntu/upload/ListeClients.csv"
+    import os
+    clients_file = os.path.join(os.path.dirname(__file__), "..", "ListeClients.csv")
     system = QdrantSystem(clients_file)
     
     # Test avec un client SAP
